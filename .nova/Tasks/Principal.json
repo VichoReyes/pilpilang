@@ -1,0 +1,17 @@
+{
+  "actions" : {
+    "build" : {
+      "enabled" : true,
+      "script" : "cabal build"
+    },
+    "clean" : {
+      "enabled" : true,
+      "script" : "cabal clean"
+    },
+    "run" : {
+      "enabled" : true,
+      "script" : "cabal run"
+    }
+  },
+  "openLogOnRun" : "start"
+}
