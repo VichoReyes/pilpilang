@@ -21,21 +21,23 @@ maintainer:         vreyesvaldivieso@gmail.com
 -- category:
 extra-source-files: CHANGELOG.md
 
-library
-    build-depends:    containers, text, megaparsec, base >=4.14
-    exposed-modules: Types
-    hs-source-dirs:   src
+common deps
     default-language: Haskell2010
+    build-depends:    containers, text, megaparsec, base >=4.14
 
+library
+    import:          deps
+    exposed-modules: Types
+    hs-source-dirs:  src
 
 executable polar-parse
+    import:           deps
     main-is:          Main.hs
-    build-depends:    containers, text, megaparsec, base >=4.14
     hs-source-dirs:   app
-    default-language: Haskell2010
 
 Test-Suite test-foo
+    import:          deps
     type:       exitcode-stdio-1.0
     main-is:    test-foo.hs
-    build-depends: base, megaparsec, text, polar-parse
     hs-source-dirs:   test
+    build-depends: polar-parse
