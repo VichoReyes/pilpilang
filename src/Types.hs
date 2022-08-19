@@ -26,6 +26,9 @@ symbol = L.symbol spaceConsumer
 
 symbol' = void . symbol
 
+pKeyword :: Text -> Parser Text
+pKeyword keyword = lexeme (string keyword <* notFollowedBy alphaNumChar)
+
 data Actor = Actor
     { actorName :: Text
     , actorTable :: Text
@@ -37,7 +40,7 @@ stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
 
 pActor :: Parser Actor
 pActor = do
-    symbol' "actor"
+    pKeyword "actor"
     actorName <- lexeme 
         (T.pack <$> ((:) <$> upperChar <*> many alphaNumChar))
         <?> "actor name (should start with upper case letter)"

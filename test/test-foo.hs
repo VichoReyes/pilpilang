@@ -41,6 +41,6 @@ actor1_desc = "actor MyActor {\
 \ }"
 
 main = do
-    -- parseFail pActor "actorActor { table \"tablename\" columns []}"
+    parseFail pActor "actorActor { table \"tablename\" columns []}"
     parsePass pActor "actor Actor { table \"tablename\" columns []}"
     parseCheck pActor actor1_desc actor1
