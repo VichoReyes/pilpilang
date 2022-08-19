@@ -44,3 +44,4 @@ main = do
     parseFail pActor "actorActor { table \"tablename\" columns []}"
     parsePass pActor "actor Actor { table \"tablename\" columns []}"
     parseCheck pActor actor1_desc actor1
+    parseCheck pQuotedLiteral "\"escapedquote\\\"here\"" "escapedquote\"here"

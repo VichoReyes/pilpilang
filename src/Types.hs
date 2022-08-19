@@ -65,9 +65,8 @@ pLiteralsList = pLiteralsList2 <|> pure []
                 else return [elem]
 
 pQuotedLiteral :: Parser Text
-pQuotedLiteral = do
-    symbol' "\""
-    result <- lexeme (some alphaNumChar) -- TODO improve
-    symbol' "\""
-    return $ T.pack result
+pQuotedLiteral = lexeme $ do
+    char '"'
+    literal <- manyTill L.charLiteral (char '"')
+    return (T.pack literal)
 
