@@ -32,7 +32,7 @@ pKeyword keyword = lexeme (string keyword <* notFollowedBy alphaNumChar)
 data Actor = Actor
     { actorName :: Text
     , actorTable :: Text
-    , actorColumns :: [Text]
+    , actorColumns :: Maybe [Text]
     } deriving (Eq, Show, Ord)
 
 stringLiteral :: Parser Text
@@ -45,12 +45,14 @@ pActor = do
         (T.pack <$> ((:) <$> upperChar <*> many alphaNumChar))
         <?> "actor name (should start with upper case letter)"
     symbol' "{"
-    symbol' "table"
-    actorTable <- pQuotedLiteral
-    symbol' "columns"
-    symbol' "["
-    actorColumns <- pLiteralsList
-    symbol' "]"
+    symbol' "table" <?> "table (which table stores"<>T.unpack actorName<>"s?)"
+    actorTable <- pQuotedLiteral <?> "table name"
+    actorColumns <- optional $ do
+        symbol' "columns"
+        symbol' "["
+        columns <- pLiteralsList
+        symbol' "]"
+        return columns
     symbol' "}"
     return Actor{..}
 
