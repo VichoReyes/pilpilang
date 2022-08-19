@@ -3,25 +3,44 @@
 module Main (main) where
 
 import System.Exit (exitFailure)
-import qualified Text.Megaparsec as MP
-import qualified Text.Megaparsec.Char as MP.C
-import Data.Either (isLeft)
-import Types (Parser)
+import Text.Megaparsec
+import Text.Megaparsec.Char
+import Data.Either (isLeft, isRight)
+import Types
 import qualified Data.Text as T
 
-parsePass :: (Eq a) => Parser a -> T.Text -> a -> IO ()
-parsePass parser text result = do
-    if MP.runParser (parser <* MP.eof) "" text == Right result
+-- TODO: usar hspec-megaparsec
+
+parseCheck :: (Eq a) => Parser a -> T.Text -> a -> IO ()
+parseCheck parser text result = do
+    if runParser (parser <* eof) "" text == Right result
       then return ()
       else exitFailure
 
 parseFail :: Parser a -> T.Text -> IO ()
 parseFail parser text = do
-    if isLeft $ MP.runParser (parser <* MP.eof) "" text
+    if isLeft $ runParser (parser <* eof) "" text
       then return ()
       else exitFailure
 
+parsePass :: Parser a -> T.Text -> IO ()
+parsePass parser text = do
+    if isRight $ runParser (parser <* eof) "" text
+      then return ()
+      else exitFailure
+
+actor1 = Actor
+    { actorName = "MyActor"
+    , actorTable = "actors"
+    , actorColumns = ["col1", "col2"]
+    }
+
+actor1_desc = "actor MyActor {\
+\    table \"actors\"\
+\    columns [\"col1\", \"col2\"] \
+\ }"
+
 main = do
-    parsePass (MP.C.char 'a') "a" 'a'
-    parsePass (MP.C.string' "hola") "HoLa" "HoLa"
-    parseFail (MP.C.string' "hola") "HoLaa"
+    -- parseFail pActor "actorActor { table \"tablename\" columns []}"
+    parsePass pActor "actor Actor { table \"tablename\" columns []}"
+    parseCheck pActor actor1_desc actor1
