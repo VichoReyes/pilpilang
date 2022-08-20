@@ -50,8 +50,8 @@ pActor = do
     actorName <- pTitleCasedWord
         <?> "actor name (should start with upper case letter)"
     symbol' "{"
-    symbol' "table" <?> "table (which table stores"<>T.unpack actorName<>"s?)"
-    actorTable <- pQuotedLiteral <?> "table name"
+    symbol' "table" <?> "table (which table stores "<>T.unpack actorName<>"s?)"
+    actorTable <- pQuotedLiteral False <?> "table name"
     actorColumns <- optional $ do
         symbol' "columns"
         symbol' "["
@@ -71,15 +71,18 @@ pLiteralsList :: Parser [Text]
 pLiteralsList = pLiteralsList2 <|> pure []
     where
         pLiteralsList2 = do
-            elem <- pQuotedLiteral
+            elem <- pQuotedLiteral True
             canContinue <- True <$ symbol' "," <|> pure False
             if canContinue
                 then (elem : ) <$> pLiteralsList
                 else return [elem]
 
-pQuotedLiteral :: Parser Text
-pQuotedLiteral = lexeme $ do
+pQuotedLiteral :: Bool -> Parser Text
+pQuotedLiteral allowEmpty = lexeme $ do
     char '"'
+    prefix <- if allowEmpty
+        then return ""
+        else (:[]) <$> L.charLiteral
     literal <- manyTill L.charLiteral (char '"')
-    return (T.pack literal)
+    return $ T.pack (prefix <> literal)
 
