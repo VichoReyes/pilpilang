@@ -49,3 +49,4 @@ main = do
         {actorName = "Actor", actorTable = "tablename", actorColumns = Nothing}
     parsePass pActor "actor Actor_1 {table \"asdf\" }"
     parseFail pActor "actor Ac {table \"\"}"
+    parsePass pResource "resource Re {table \"asdf\"}"

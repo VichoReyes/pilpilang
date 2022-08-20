@@ -52,14 +52,30 @@ pActor = do
     symbol' "{"
     symbol' "table" <?> "table (which table stores "<>T.unpack actorName<>"s?)"
     actorTable <- pQuotedLiteral False <?> "table name"
-    actorColumns <- optional $ do
-        symbol' "columns"
-        symbol' "["
-        columns <- pLiteralsList
-        symbol' "]"
-        return columns
+    actorColumns <- pColumnsList
     symbol' "}"
     return Actor{..}
+
+-- yes this is repetitive, but it's not so bad I think
+pResource :: Parser Resource
+pResource = do
+    pKeyword "resource"
+    resourceName <- pTitleCasedWord
+        <?> "resource name (should start with upper case letter)"
+    symbol' "{"
+    symbol' "table" <?> "table (which table stores "<>T.unpack resourceName<>"s?)"
+    resourceTable <- pQuotedLiteral False <?> "table name"
+    resourceColumns <- pColumnsList
+    symbol' "}"
+    return Resource{..}
+
+pColumnsList :: Parser (Maybe [Text])
+pColumnsList = optional $ do
+    symbol' "columns"
+    symbol' "["
+    columns <- pLiteralsList
+    symbol' "]"
+    return columns
 
 pTitleCasedWord :: Parser Text
 pTitleCasedWord = lexeme $ do
