@@ -35,14 +35,19 @@ data Actor = Actor
     , actorColumns :: Maybe [Text]
     } deriving (Eq, Show, Ord)
 
+data Resource = Resource
+    { resourceName :: Text
+    , resourceTable :: Text
+    , resourceColumns :: Maybe [Text]
+    } deriving (Eq, Show, Ord)
+
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
 
 pActor :: Parser Actor
 pActor = do
     pKeyword "actor"
-    actorName <- lexeme 
-        (T.pack <$> ((:) <$> upperChar <*> many alphaNumChar))
+    actorName <- pTitleCasedWord
         <?> "actor name (should start with upper case letter)"
     symbol' "{"
     symbol' "table" <?> "table (which table stores"<>T.unpack actorName<>"s?)"
@@ -55,6 +60,12 @@ pActor = do
         return columns
     symbol' "}"
     return Actor{..}
+
+pTitleCasedWord :: Parser Text
+pTitleCasedWord = lexeme $ do
+    first <- upperChar
+    rest <- many (alphaNumChar <|> char '_')
+    return $ T.pack (first:rest)
 
 pLiteralsList :: Parser [Text]
 pLiteralsList = pLiteralsList2 <|> pure []

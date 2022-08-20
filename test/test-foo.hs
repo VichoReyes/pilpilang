@@ -47,3 +47,4 @@ main = do
     parseCheck pQuotedLiteral "\"escapedquote\\\"here\"" "escapedquote\"here"
     parseCheck pActor "actor Actor { table \"tablename\" }" Actor
         {actorName = "Actor", actorTable = "tablename", actorColumns = Nothing}
+    parsePass pActor "actor Actor_1 {table \"asdf\" }"
