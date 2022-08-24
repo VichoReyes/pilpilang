@@ -102,3 +102,47 @@ pQuotedLiteral allowEmpty = lexeme $ do
     literal <- manyTill L.charLiteral (char '"')
     return $ T.pack (prefix <> literal)
 
+data Assoc = Assoc
+    { assocHeader :: AssocHeader
+    , assocDefinition :: Predicate
+    } deriving (Eq, Show, Ord)
+
+data AssocHeader = AHPermission Permission | AHDef Definition
+    deriving (Eq, Show, Ord)
+
+data Permission = Permission
+    { permissionType :: PermissionType
+    , permissionActor :: OptTypeVar
+    , permissionResource :: OptTypeVar
+    } deriving (Eq, Show, Ord)
+
+data PermissionType = PCanRead | PCanWrite | PCanDelete
+    deriving (Eq, Show, Ord)
+
+data OptTypeVar = OptTypeVar
+    { otvarName :: Text
+    , otvarType :: Maybe Text
+    } deriving (Eq, Show, Ord)
+
+data Definition = Definition
+    { defName :: Text
+    , defArgs :: [OptTypeVar]
+    } deriving (Eq, Show, Ord)
+
+data Predicate
+    = PCall PredCall
+    | PAnd Predicate Predicate
+    -- | POr Predicate Predicate
+    | PEquals Value Value
+    deriving (Eq, Show, Ord)
+
+data PredCall = PredCall
+    { predCallName :: Text
+    , predCallArgs :: [Text]
+    } deriving (Eq, Show, Ord)
+
+data Value
+    = VVar Text -- name of variable
+    | VVarField Text Text -- object variable and field
+    | VLiteral Int -- for now the only literals are integers
+    deriving (Eq, Show, Ord)
