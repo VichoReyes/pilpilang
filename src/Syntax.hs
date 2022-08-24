@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module Types where
+module Syntax where
 
 import qualified Data.Text as T
 import Data.Text (Text)

@@ -6,7 +6,7 @@ import System.Exit (exitFailure)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Data.Either (isLeft, isRight)
-import Types
+import Syntax
 import qualified Data.Text as T
 
 -- TODO: usar hspec-megaparsec

@@ -27,7 +27,7 @@ common deps
 
 library
     import:          deps
-    exposed-modules: Types
+    exposed-modules: Syntax
     hs-source-dirs:  src
 
 executable polar-parse
