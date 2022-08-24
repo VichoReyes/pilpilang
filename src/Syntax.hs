@@ -83,6 +83,12 @@ pTitleCasedWord = lexeme $ do
     rest <- many (alphaNumChar <|> char '_')
     return $ T.pack (first:rest)
 
+pLowerCasedWord :: Parser Text
+pLowerCasedWord = lexeme $ do
+    first <- lowerChar
+    rest <- many (alphaNumChar <|> char '_')
+    return $ T.pack (first:rest)
+
 pLiteralsList :: Parser [Text]
 pLiteralsList = pLiteralsList2 <|> pure []
     where
@@ -107,8 +113,19 @@ data Assoc = Assoc
     , assocDefinition :: Predicate
     } deriving (Eq, Show, Ord)
 
+pAssoc :: Parser Assoc
+pAssoc = lexeme $ do
+    assocHeader <- pAssocHeader
+    symbol' "if"
+    assocDefinition <- pPredicate
+    return Assoc {..}
+
 data AssocHeader = AHPermission Permission | AHDef Definition
     deriving (Eq, Show, Ord)
+
+pAssocHeader :: Parser AssocHeader
+pAssocHeader = lexeme $
+    (AHPermission <$> pPermission) <|> (AHDef <$> pDefinition)
 
 data Permission = Permission
     { permissionType :: PermissionType
@@ -116,18 +133,54 @@ data Permission = Permission
     , permissionResource :: OptTypeVar
     } deriving (Eq, Show, Ord)
 
+pPermission :: Parser Permission
+pPermission = lexeme $ do
+    permissionType <- pPermissionType
+    symbol' "("
+    permissionActor <- pOptTypeVar
+    symbol' ","
+    permissionResource <- pOptTypeVar
+    symbol' ")"
+    return Permission {..}
+
 data PermissionType = PCanRead | PCanWrite | PCanDelete
     deriving (Eq, Show, Ord)
+
+pPermissionType :: Parser PermissionType
+pPermissionType = lexeme $ choice
+    [ PCanRead <$ pKeyword "can_read"
+    , PCanWrite <$ pKeyword "can_write"
+    , PCanDelete <$ pKeyword "can_delete"
+    ]
 
 data OptTypeVar = OptTypeVar
     { otvarName :: Text
     , otvarType :: Maybe Text
     } deriving (Eq, Show, Ord)
 
+pOptTypeVar :: Parser OptTypeVar
+pOptTypeVar = lexeme $ do
+    otvarName <- pLowerCasedWord
+    otvarType <- optional $ do
+        symbol' ":"
+        pTitleCasedWord <?> "type (an actor or resource)"
+    return OptTypeVar{..}
+
 data Definition = Definition
     { defName :: Text
     , defArgs :: [OptTypeVar]
     } deriving (Eq, Show, Ord)
+
+pDefinition :: Parser Definition
+pDefinition = lexeme $ do
+    defName <- pLowerCasedWord
+    symbol' "("
+    let defArgs = []
+    void $ some (alphaNumChar <|> char ',' <|> char ' ') -- TODO
+    -- why not just "many (pLowerCasedWord <* optional (char ','))"?
+    -- because the comma should only be optional in the last one
+    symbol' ")"
+    return Definition {..}
 
 data Predicate
     = PCall PredCall
@@ -136,13 +189,41 @@ data Predicate
     | PEquals Value Value
     deriving (Eq, Show, Ord)
 
+-- TODO find out good version of this
+-- I should probably add try's
+pPredicate :: Parser Predicate
+pPredicate = lexeme $ choice
+    [ PEquals <$> pValue <*> pValue
+    , PCall <$> pPredCall
+    , PAnd <$> pPredicate <*> pPredicate
+    ]
+
 data PredCall = PredCall
     { predCallName :: Text
     , predCallArgs :: [Text]
     } deriving (Eq, Show, Ord)
+
+pPredCall :: Parser PredCall
+pPredCall = do -- TODO
+    tmp <- pDefinition
+    return PredCall {predCallName = defName tmp, predCallArgs = []}
+
 
 data Value
     = VVar Text -- name of variable
     | VVarField Text Text -- object variable and field
     | VLiteral Int -- for now the only literals are integers
     deriving (Eq, Show, Ord)
+
+pValue :: Parser Value
+pValue = lexeme $ choice
+    [ VLiteral <$> L.signed empty L.decimal
+    , uncurry VVarField <$> try pVarField
+    , VVar <$> pLowerCasedWord
+    ]
+        where 
+            pVarField = do
+                var <- pLowerCasedWord
+                char '.'
+                field <- pLowerCasedWord
+                return (var, field)
