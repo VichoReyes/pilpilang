@@ -77,7 +77,7 @@ complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfas
                 }
             ), 
         assocDefinition = PAnd
-            (PCall $ PredCall "hola" [])
+            (PCall $ PredCall "hola" ["asdfasd"])
             (PEquals (VLiteral 7) (VLiteral 5))
             }
 

@@ -74,7 +74,7 @@ pColumnsList :: Parser (Maybe [Text])
 pColumnsList = optional $ do
     symbol' "columns"
     symbol' "["
-    columns <- pLiteralsList
+    columns <- pCommaSepList (pQuotedLiteral True)
     symbol' "]"
     return columns
 
@@ -90,14 +90,16 @@ pLowerCasedWord = lexeme $ do
     rest <- many (alphaNumChar <|> char '_')
     return $ T.pack (first:rest)
 
-pLiteralsList :: Parser [Text]
-pLiteralsList = pLiteralsList2 <|> pure []
+-- Combinator like `many` but with interspersed commas.
+-- The final comma is optional.
+pCommaSepList :: Parser a -> Parser [a]
+pCommaSepList pElem = pCommaSepList2 <|> pure []
     where
-        pLiteralsList2 = do
-            elem <- pQuotedLiteral True
+        pCommaSepList2 = do
+            elem <- pElem
             canContinue <- True <$ symbol' "," <|> pure False
             if canContinue
-                then (elem : ) <$> pLiteralsList
+                then (elem : ) <$> pCommaSepList pElem
                 else return [elem]
 
 pQuotedLiteral :: Bool -> Parser Text
@@ -176,10 +178,7 @@ pDefinition :: Parser Definition
 pDefinition = lexeme $ do
     defName <- pLowerCasedWord
     symbol' "("
-    let defArgs = []
-    void $ some (alphaNumChar <|> char ',' <|> char ' ') -- TODO
-    -- why not just "many (pLowerCasedWord <* optional (char ','))"?
-    -- because the comma should only be optional in the last one
+    defArgs <- pCommaSepList pOptTypeVar
     symbol' ")"
     return Definition {..}
 
@@ -211,9 +210,12 @@ data PredCall = PredCall
     } deriving (Eq, Show, Ord)
 
 pPredCall :: Parser PredCall
-pPredCall = do -- TODO
-    tmp <- pDefinition
-    return PredCall {predCallName = defName tmp, predCallArgs = []}
+pPredCall = do
+    predCallName <- pLowerCasedWord
+    symbol "("
+    predCallArgs <- pCommaSepList pLowerCasedWord
+    symbol ")"
+    return PredCall {..}
 
 
 data Value
