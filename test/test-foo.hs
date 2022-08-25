@@ -52,6 +52,7 @@ main = do
     parsePass pResource "resource Re {table \"asdf\"}"
     complexCase
     complexCase2
+    complexCase3
 
 
 complexCase :: IO ()
@@ -79,5 +80,21 @@ complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfas
         assocDefinition = PAnd
             (PCall $ PredCall "hola" ["asdfasd"])
             (PEquals (VLiteral 7) (VLiteral 5))
+            }
+
+complexCase3 :: IO ()
+complexCase3 = parseCheck pAssoc "numbers(a, r: T) if a >4   || (r   <8   && a  =  r)" 
+    Assoc { 
+        assocHeader = AHDef (
+            Definition {
+                defName = "numbers", 
+                defArgs = [OptTypeVar "a" Nothing, OptTypeVar "r" (Just "T")]
+                }
+            ), 
+        assocDefinition = POr
+            (PGreaterT (VVar "a") (VLiteral 4))
+            (PAnd
+                (PLessT (VVar "r") (VLiteral 8))
+                (PEquals (VVar "a") (VVar "r")))
             }
 

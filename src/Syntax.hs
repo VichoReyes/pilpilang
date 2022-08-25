@@ -187,16 +187,19 @@ data Predicate
     | PAnd Predicate Predicate
     | POr Predicate Predicate
     | PEquals Value Value
+    | PGreaterT Value Value
+    | PLessT Value Value
     deriving (Eq, Show, Ord)
 
--- TODO find out good version of this
--- I should probably add try's
 pPredicate :: Parser Predicate
 pPredicate = makeExprParser pTerm operatorTable
     where
         pTerm = choice
             [ PCall <$> try pPredCall
+            -- TODO: Do this with makeExprParser too
             , PEquals <$> try (pValue <* symbol' "=") <*> pValue
+            , PGreaterT <$> try (pValue <* symbol' ">") <*> pValue
+            , PLessT <$> try (pValue <* symbol' "<") <*> pValue
             , between (symbol "(") (symbol ")") pPredicate
             ]
         operatorTable = [
