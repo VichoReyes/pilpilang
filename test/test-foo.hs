@@ -50,3 +50,34 @@ main = do
     parsePass pActor "actor Actor_1 {table \"asdf\" }"
     parseFail pActor "actor Ac {table \"\"}"
     parsePass pResource "resource Re {table \"asdf\"}"
+    complexCase
+    complexCase2
+
+
+complexCase :: IO ()
+complexCase = parseCheck pAssoc "can_write(actor: Actor, resource: Doc) if 7 = actor.age" 
+    Assoc { 
+        assocHeader = AHPermission (
+            Permission {
+                permissionType = PCanWrite, 
+                permissionActor = OptTypeVar {otvarName = "actor", otvarType = Just "Actor"}, 
+                permissionResource = OptTypeVar {otvarName = "resource", otvarType = Just "Doc"}
+                }
+            ), 
+        assocDefinition = PEquals (VLiteral 7) (VVarField "actor" "age")}
+
+complexCase2 :: IO ()
+complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfasd) && 7 = 5" 
+    Assoc { 
+        assocHeader = AHPermission (
+            Permission {
+                permissionType = PCanWrite, 
+                permissionActor = OptTypeVar {otvarName = "actor", otvarType = Nothing}, 
+                permissionResource = OptTypeVar {otvarName = "resource", otvarType = Just "Doc"}
+                }
+            ), 
+        assocDefinition = PAnd
+            (PCall $ PredCall "hola" [])
+            (PEquals (VLiteral 7) (VLiteral 5))
+            }
+

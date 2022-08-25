@@ -10,8 +10,9 @@ import Data.Functor (void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
+import Control.Monad.Combinators.Expr
 
-type Parser = Parsec Void T.Text
+type Parser = Parsec Void Text
 
 -- Skipper of whitespace. Doesn't accept comments
 spaceConsumer :: Parser ()
@@ -185,18 +186,24 @@ pDefinition = lexeme $ do
 data Predicate
     = PCall PredCall
     | PAnd Predicate Predicate
-    -- | POr Predicate Predicate
+    | POr Predicate Predicate
     | PEquals Value Value
     deriving (Eq, Show, Ord)
 
 -- TODO find out good version of this
 -- I should probably add try's
 pPredicate :: Parser Predicate
-pPredicate = lexeme $ choice
-    [ PEquals <$> pValue <*> pValue
-    , PCall <$> pPredCall
-    , PAnd <$> pPredicate <*> pPredicate
-    ]
+pPredicate = makeExprParser pTerm operatorTable
+    where
+        pTerm = choice
+            [ PCall <$> try pPredCall
+            , PEquals <$> try (pValue <* symbol' "=") <*> pValue
+            , between (symbol "(") (symbol ")") pPredicate
+            ]
+        operatorTable = [
+            [ InfixL (PAnd <$ symbol "&&")
+            , InfixR (POr <$ symbol "||")
+            ]]
 
 data PredCall = PredCall
     { predCallName :: Text
@@ -218,7 +225,7 @@ data Value
 pValue :: Parser Value
 pValue = lexeme $ choice
     [ VLiteral <$> L.signed empty L.decimal
-    , uncurry VVarField <$> try pVarField
+    , try pVarField
     , VVar <$> pLowerCasedWord
     ]
         where 
@@ -226,4 +233,4 @@ pValue = lexeme $ choice
                 var <- pLowerCasedWord
                 char '.'
                 field <- pLowerCasedWord
-                return (var, field)
+                return (VVarField var field)
