@@ -6,7 +6,6 @@ module Syntax where
 import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Void (Void)
-import Data.Functor (void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -24,8 +23,6 @@ lexeme = L.lexeme spaceConsumer
 
 symbol :: Text -> Parser Text
 symbol = L.symbol spaceConsumer
-
-symbol' = void . symbol
 
 pKeyword :: Text -> Parser Text
 pKeyword keyword = lexeme (string keyword <* notFollowedBy alphaNumChar)
@@ -50,11 +47,11 @@ pActor = do
     pKeyword "actor"
     actorName <- pTitleCasedWord
         <?> "actor name (should start with upper case letter)"
-    symbol' "{"
-    symbol' "table" <?> "table (which table stores "<>T.unpack actorName<>"s?)"
+    symbol "{"
+    symbol "table" <?> "table (which table stores "<>T.unpack actorName<>"s?)"
     actorTable <- pQuotedLiteral False <?> "table name"
     actorColumns <- pColumnsList
-    symbol' "}"
+    symbol "}"
     return Actor{..}
 
 -- yes this is repetitive, but it's not so bad I think
@@ -63,19 +60,19 @@ pResource = do
     pKeyword "resource"
     resourceName <- pTitleCasedWord
         <?> "resource name (should start with upper case letter)"
-    symbol' "{"
-    symbol' "table" <?> "table (which table stores "<>T.unpack resourceName<>"s?)"
+    symbol "{"
+    symbol "table" <?> "table (which table stores "<>T.unpack resourceName<>"s?)"
     resourceTable <- pQuotedLiteral False <?> "table name"
     resourceColumns <- pColumnsList
-    symbol' "}"
+    symbol "}"
     return Resource{..}
 
 pColumnsList :: Parser (Maybe [Text])
 pColumnsList = optional $ do
-    symbol' "columns"
-    symbol' "["
+    symbol "columns"
+    symbol "["
     columns <- pCommaSepList (pQuotedLiteral True)
-    symbol' "]"
+    symbol "]"
     return columns
 
 pTitleCasedWord :: Parser Text
@@ -97,7 +94,7 @@ pCommaSepList pElem = pCommaSepList2 <|> pure []
     where
         pCommaSepList2 = do
             elem <- pElem
-            canContinue <- True <$ symbol' "," <|> pure False
+            canContinue <- True <$ symbol "," <|> pure False
             if canContinue
                 then (elem : ) <$> pCommaSepList pElem
                 else return [elem]
@@ -119,7 +116,7 @@ data Assoc = Assoc
 pAssoc :: Parser Assoc
 pAssoc = lexeme $ do
     assocHeader <- pAssocHeader
-    symbol' "if"
+    symbol "if"
     assocDefinition <- pPredicate
     return Assoc {..}
 
@@ -139,11 +136,11 @@ data Permission = Permission
 pPermission :: Parser Permission
 pPermission = lexeme $ do
     permissionType <- pPermissionType
-    symbol' "("
+    symbol "("
     permissionActor <- pOptTypeVar
-    symbol' ","
+    symbol ","
     permissionResource <- pOptTypeVar
-    symbol' ")"
+    symbol ")"
     return Permission {..}
 
 data PermissionType = PCanRead | PCanWrite | PCanDelete
@@ -165,7 +162,7 @@ pOptTypeVar :: Parser OptTypeVar
 pOptTypeVar = lexeme $ do
     otvarName <- pLowerCasedWord
     otvarType <- optional $ do
-        symbol' ":"
+        symbol ":"
         pTitleCasedWord <?> "type (an actor or resource)"
     return OptTypeVar{..}
 
@@ -177,9 +174,9 @@ data Definition = Definition
 pDefinition :: Parser Definition
 pDefinition = lexeme $ do
     defName <- pLowerCasedWord
-    symbol' "("
+    symbol "("
     defArgs <- pCommaSepList pOptTypeVar
-    symbol' ")"
+    symbol ")"
     return Definition {..}
 
 data Predicate
@@ -197,9 +194,9 @@ pPredicate = makeExprParser pTerm operatorTable
         pTerm = choice
             [ PCall <$> try pPredCall
             -- TODO: Do this with makeExprParser too
-            , PEquals <$> try (pValue <* symbol' "=") <*> pValue
-            , PGreaterT <$> try (pValue <* symbol' ">") <*> pValue
-            , PLessT <$> try (pValue <* symbol' "<") <*> pValue
+            , PEquals <$> try (pValue <* symbol "=") <*> pValue
+            , PGreaterT <$> try (pValue <* symbol ">") <*> pValue
+            , PLessT <$> try (pValue <* symbol "<") <*> pValue
             , between (symbol "(") (symbol ")") pPredicate
             ]
         operatorTable = [
