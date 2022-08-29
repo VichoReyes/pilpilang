@@ -1,0 +1,21 @@
+assoc := assocHeader "if" predicate
+
+assocHeader := permission | definition
+
+permission := permType(actor[: Type], resource[:Type])
+
+permType := can_read, can_write, can_delete
+
+definition := name(args[: Type]...)
+
+predicate
+   := predCall
+   | predicate && predicate
+   | predicate || predicate
+   | value = value
+   | value < value
+   | value > value
+
+predCall := name(args...)
+
+value := variableName | var.field | 3
