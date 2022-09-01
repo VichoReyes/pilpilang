@@ -6,7 +6,6 @@ module Syntax where
 import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Maybe (fromMaybe)
-import Data.Char (ord)
 import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -68,22 +67,8 @@ resource :: Text -> Text -> [a] -> GEntity ResourceMarker a
 actor = Entity
 resource = Entity
 
--- very much mock
-fillColumnTypes :: GEntity a Text -> IO (GEntity a (Text, Text))
-fillColumnTypes (Entity name table cols) = do
-    return $ Entity name table typedCols
-        where
-            typedCols = do
-                untypedCol <- cols
-                let colType = case T.uncons untypedCol of
-                                   Just (c, _) -> typeFrom c
-                                   Nothing -> undefined
-                return (untypedCol, colType)
-            typeFrom c = case (ord c `mod` 3) of
-                0 -> "Int"
-                1 -> "Bool"
-                2 -> "String"
-                _ -> undefined
+class ColumnTypeProvider a where
+    fillTypes :: a -> GEntity klass Text -> IO (GEntity klass (Text, Text))
 
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')

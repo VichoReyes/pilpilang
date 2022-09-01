@@ -5,9 +5,11 @@ module Main (main) where
 import System.Exit (exitFailure)
 import Text.Megaparsec
 import Text.Megaparsec.Char
+import Data.Char (ord)
 import Data.Either (isLeft, isRight)
 import Syntax
 import qualified Data.Text as T
+import Data.Text (Text)
 import qualified Data.Text.IO as TIO
 
 -- TODO: usar hspec-megaparsec
@@ -30,16 +32,15 @@ parsePass parser text = do
       then return ()
       else exitFailure
 
-{-
 data MockDB = MockDB
 
-instance EntityInfoProvider where
-    fillResourceColumns = fillColumnTypes
-    fillActorColumns = undefined
+instance ColumnTypeProvider MockDB where
+    fillTypes _ = fillColumnTypes
 
-fillColumnTypes :: MockDB -> Resource -> IO TypedResource
-fillColumnTypes _ (Resource name table cols) = do
-    return $ Resource name table typedCols
+-- very much mock
+fillColumnTypes :: GEntity a Text -> IO (GEntity a (Text, Text))
+fillColumnTypes (Entity name table cols) = do
+    return $ Entity name table typedCols
         where
             typedCols = do
                 untypedCol <- cols
@@ -52,7 +53,6 @@ fillColumnTypes _ (Resource name table cols) = do
                 1 -> "Bool"
                 2 -> "String"
                 _ -> undefined
--}
 
 actor1 = actor "MyActor" "actors" ["col1", "col2"]
 
