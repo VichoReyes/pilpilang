@@ -30,11 +30,31 @@ parsePass parser text = do
       then return ()
       else exitFailure
 
-actor1 = Actor
-    { actorName = "MyActor"
-    , actorTable = "actors"
-    , actorColumns = ["col1", "col2"]
-    }
+{-
+data MockDB = MockDB
+
+instance EntityInfoProvider where
+    fillResourceColumns = fillColumnTypes
+    fillActorColumns = undefined
+
+fillColumnTypes :: MockDB -> Resource -> IO TypedResource
+fillColumnTypes _ (Resource name table cols) = do
+    return $ Resource name table typedCols
+        where
+            typedCols = do
+                untypedCol <- cols
+                let colType = case T.uncons untypedCol of
+                                   Just (c, _) -> typeFrom c
+                                   Nothing -> undefined
+                return (untypedCol, colType)
+            typeFrom c = case (ord c `mod` 3) of
+                0 -> "Int"
+                1 -> "Bool"
+                2 -> "String"
+                _ -> undefined
+-}
+
+actor1 = actor "MyActor" "actors" ["col1", "col2"]
 
 actor1_desc = "actor MyActor {\
 \    table \"actors\"\
@@ -46,8 +66,8 @@ main = do
     parsePass pActor "actor Actor { table \"tablename\" columns []}"
     parseCheck pActor actor1_desc actor1
     parseCheck (pQuotedLiteral True) "\"escapedquote\\\"here\"" "escapedquote\"here"
-    parseCheck pActor "actor Actor { table \"tablename\" }" Actor
-        {actorName = "Actor", actorTable = "tablename", actorColumns = []}
+    parseCheck pActor "actor Actor { table \"tablename\" }"
+        (actor "Actor" "tablename" [])
     parsePass pActor "actor Actor_1 {table \"asdf\" }"
     parseFail pActor "actor Ac {table \"\"}"
     parsePass pResource "resource Re {table \"asdf\"}"

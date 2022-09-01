@@ -43,30 +43,35 @@ pAST = do
     astAssociations <- some (lexeme pAssoc)
     return AST{..}
 
-data GActor a = Actor
-    { actorName :: Text
-    , actorTable :: Text
-    , actorColumns :: [a]
+-- Basically, there are 4 possibilities for entities:
+-- 1. actors without types (entityClass = ActorMarker, columnType = Text)
+-- 2. actors with types (entityClass = ActorMarker, columnType = (Text, Text))
+-- 1. resources without types (entityClass = ResourceMarker, columnType = Text)
+-- 2. resources with types (entityClass = ResourceMarker, columnType = (Text, Text))
+data GEntity entityClass columnType = Entity
+    { entityName :: Text
+    , entityTable :: Text
+    , entityColumns :: [columnType]
     } deriving (Eq, Show, Ord)
 
-type Actor = GActor Text
+data ActorMarker
+type Actor = GEntity ActorMarker Text
+type TypedActor = GEntity ActorMarker (Text, Text)
 
-type TypedActor = GActor (Text, Text)
+data ResourceMarker
+type Resource = GEntity ResourceMarker Text
+type TypedResource = GEntity ResourceMarker (Text, Text)
 
-data GResource a = Resource
-    { resourceName :: Text
-    , resourceTable :: Text
-    , resourceColumns :: [a]
-    } deriving (Eq, Show, Ord)
-
-type Resource = GResource Text
-
-type TypedResource = GResource (Text, Text)
+-- constructors
+actor :: Text -> Text -> [a] -> GEntity ActorMarker a
+resource :: Text -> Text -> [a] -> GEntity ResourceMarker a
+actor = Entity
+resource = Entity
 
 -- very much mock
-fillColumnTypes :: Resource -> IO TypedResource
-fillColumnTypes (Resource name table cols) = do
-    return $ Resource name table typedCols
+fillColumnTypes :: GEntity a Text -> IO (GEntity a (Text, Text))
+fillColumnTypes (Entity name table cols) = do
+    return $ Entity name table typedCols
         where
             typedCols = do
                 untypedCol <- cols
@@ -84,29 +89,22 @@ stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
 
 pActor :: Parser Actor
-pActor = do
-    pKeyword "actor"
-    actorName <- pTitleCasedWord
-        <?> "actor name (should start with upper case letter)"
-    symbol "{"
-    symbol "table" <?> "table (which table stores "<>T.unpack actorName<>"s?)"
-    actorTable <- pQuotedLiteral False <?> "table name"
-    actorColumns <- pColumnsList
-    symbol "}"
-    return Actor{..}
+pActor = pEntity "actor"
 
--- yes this is repetitive, but it's not so bad I think
 pResource :: Parser Resource
-pResource = do
-    pKeyword "resource"
-    resourceName <- pTitleCasedWord
-        <?> "resource name (should start with upper case letter)"
+pResource = pEntity "resource"
+
+pEntity :: Text -> Parser (GEntity entityClass Text)
+pEntity keyword = do
+    pKeyword keyword
+    entityName <- pTitleCasedWord
+        <?> T.unpack keyword <> " name (should start with upper case letter)"
     symbol "{"
-    symbol "table" <?> "table (which table stores "<>T.unpack resourceName<>"s?)"
-    resourceTable <- pQuotedLiteral False <?> "table name"
-    resourceColumns <- pColumnsList
+    symbol "table" <?> "table (which table stores "<>T.unpack entityName<>"s?)"
+    entityTable <- pQuotedLiteral False <?> "table name"
+    entityColumns <- pColumnsList
     symbol "}"
-    return Resource{..}
+    return $ Entity {..}
 
 pColumnsList :: Parser [Text]
 pColumnsList = go <|> return []
