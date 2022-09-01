@@ -195,6 +195,7 @@ pDefinition = lexeme $ do
 
 data Predicate
     = PCall PredCall
+    | PBool Bool
     | PAnd Predicate Predicate
     | POr Predicate Predicate
     | PEquals Value Value
@@ -209,6 +210,8 @@ pPredicate = makeExprParser pTerm operatorTable
             [ PCall <$> try pPredCall
             -- TODO: Do this with makeExprParser too
             , PEquals <$> try (pValue <* symbol "=") <*> pValue
+            , PBool True <$ string "true"
+            , PBool False <$ string "false"
             , PGreaterT <$> try (pValue <* symbol ">") <*> pValue
             , PLessT <$> try (pValue <* symbol "<") <*> pValue
             , between (symbol "(") (symbol ")") pPredicate
@@ -220,14 +223,14 @@ pPredicate = makeExprParser pTerm operatorTable
 
 data PredCall = PredCall
     { predCallName :: Text
-    , predCallArgs :: [Text]
+    , predCallArgs :: [Value]
     } deriving (Eq, Show, Ord)
 
 pPredCall :: Parser PredCall
 pPredCall = do
     predCallName <- pLowerCasedWord
     symbol "("
-    predCallArgs <- pCommaSepList pLowerCasedWord
+    predCallArgs <- pCommaSepList pValue
     symbol ")"
     return PredCall {..}
 
@@ -235,12 +238,15 @@ pPredCall = do
 data Value
     = VVar Text -- name of variable
     | VVarField Text Text -- object variable and field
-    | VLiteral Int -- for now the only literals are integers
+    -- literals
+    | VLitInt Int
+    | VLitString Text
     deriving (Eq, Show, Ord)
 
 pValue :: Parser Value
 pValue = lexeme $ choice
-    [ VLiteral <$> L.signed empty L.decimal
+    [ VLitInt <$> L.signed empty L.decimal
+    , VLitString <$> pQuotedLiteral True
     , try pVarField
     , VVar <$> pLowerCasedWord
     ]
