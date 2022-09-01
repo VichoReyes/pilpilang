@@ -195,7 +195,7 @@ pDefinition = lexeme $ do
 
 data Predicate
     = PCall PredCall
-    | PBool Bool
+    | PAlways
     | PAnd Predicate Predicate
     | POr Predicate Predicate
     | PEquals Value Value
@@ -210,8 +210,7 @@ pPredicate = makeExprParser pTerm operatorTable
             [ PCall <$> try pPredCall
             -- TODO: Do this with makeExprParser too
             , PEquals <$> try (pValue <* symbol "=") <*> pValue
-            , PBool True <$ string "true"
-            , PBool False <$ string "false"
+            , PAlways <$ string "always"
             , PGreaterT <$> try (pValue <* symbol ">") <*> pValue
             , PLessT <$> try (pValue <* symbol "<") <*> pValue
             , between (symbol "(") (symbol ")") pPredicate
@@ -240,6 +239,7 @@ data Value
     | VVarField Text Text -- object variable and field
     -- literals
     | VLitInt Int
+    | VLitBool Bool
     | VLitString Text
     deriving (Eq, Show, Ord)
 
@@ -247,6 +247,8 @@ pValue :: Parser Value
 pValue = lexeme $ choice
     [ VLitInt <$> L.signed empty L.decimal
     , VLitString <$> pQuotedLiteral True
+    , VLitBool True <$ string "true"
+    , VLitBool False <$ string "false"
     , try pVarField
     , VVar <$> pLowerCasedWord
     ]

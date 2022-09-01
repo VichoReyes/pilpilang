@@ -8,6 +8,7 @@ import Text.Megaparsec.Char
 import Data.Either (isLeft, isRight)
 import Syntax
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 
 -- TODO: usar hspec-megaparsec
 
@@ -98,3 +99,8 @@ complexCase3 = parseCheck pAssoc "numbers(a, r: T) if a >4   || (r   <8   && a  
                 (PEquals (VVar "a") (VVar "r")))
             }
 
+twitterCase :: IO ()
+twitterCase = do
+    pilpilang <- TIO.readFile "test/examples/twitter.pilpil"
+    parseCheck pAST pilpilang
+        AST {astActors = [Actor {actorName = "User", actorTable = "twitter_users", actorColumns = Just ["id","username","password","profile"]}], astResources = [Resource {resourceName = "Tweet", resourceTable = "twitter_tweets", resourceColumns = Just ["contents","date","user_id"]}], astAssociations = [Assoc {assocHeader = AHPermission (Permission {permissionType = PCanWrite, permissionActor = OptTypeVar {otvarName = "u", otvarType = Just "User"}, permissionResource = OptTypeVar {otvarName = "t", otvarType = Just "Tweet"}}), assocDefinition = PEquals (VVarField "t" "user_id") (VVarField "u" "id")},Assoc {assocHeader = AHPermission (Permission {permissionType = PCanRead, permissionActor = OptTypeVar {otvarName = "u", otvarType = Just "User"}, permissionResource = OptTypeVar {otvarName = "t", otvarType = Just "Tweet"}}), assocDefinition = PAlways}]}

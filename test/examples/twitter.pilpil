@@ -19,4 +19,4 @@ resource Tweet {
 
 can_write(u: User, t: Tweet) if t.user_id = u.id
 
-can_read(u: User, t: Tweet) if true
+can_read(u: User, t: Tweet) if always
