@@ -1,0 +1,21 @@
+actor User {
+    table "twitter_users"
+    columns [
+        "id",
+        "username",
+        "password",
+        "profile",
+    ]
+}
+
+resource Tweet {
+    table "twitter_tweets"
+    columns [
+        "contents",
+        "date",
+        "user_id"
+    ]
+}
+
+can_write(u: User, t: Tweet) if t.user_id = u.id
+
