@@ -13,9 +13,9 @@ import Control.Monad.Combinators.Expr
 
 type Parser = Parsec Void Text
 
--- Skipper of whitespace. Doesn't accept comments
+-- Skipper of whitespace. Accepts line comments with '#'
 spaceConsumer :: Parser ()
-spaceConsumer = L.space space1 empty empty
+spaceConsumer = L.space space1 (L.skipLineComment "#") empty
 
 -- Use this function to skip whitespace after a parser
 lexeme :: Parser a -> Parser a
