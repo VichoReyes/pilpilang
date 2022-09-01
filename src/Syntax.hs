@@ -27,6 +27,20 @@ symbol = L.symbol spaceConsumer
 pKeyword :: Text -> Parser Text
 pKeyword keyword = lexeme (string keyword <* notFollowedBy alphaNumChar)
 
+data AST = AST
+    { astActors :: [Actor]
+    , astResources :: [Resource]
+    , astAssociations :: [Assoc]
+    } deriving (Eq, Show, Ord)
+
+pAST :: Parser AST
+pAST = do
+    spaceConsumer -- initial discarding of whitespace
+    astActors <- some (lexeme pActor)
+    astResources <- some (lexeme pResource)
+    astAssociations <- some (lexeme pAssoc)
+    return AST{..}
+
 data Actor = Actor
     { actorName :: Text
     , actorTable :: Text
