@@ -5,6 +5,8 @@ module Syntax where
 
 import qualified Data.Text as T
 import Data.Text (Text)
+import Data.Maybe (fromMaybe)
+import Data.Char (ord)
 import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -44,7 +46,7 @@ pAST = do
 data GActor a = Actor
     { actorName :: Text
     , actorTable :: Text
-    , actorColumns :: Maybe [a]
+    , actorColumns :: [a]
     } deriving (Eq, Show, Ord)
 
 type Actor = GActor Text
@@ -54,7 +56,7 @@ type TypedActor = GActor (Text, Text)
 data GResource a = Resource
     { resourceName :: Text
     , resourceTable :: Text
-    , resourceColumns :: Maybe [a]
+    , resourceColumns :: [a]
     } deriving (Eq, Show, Ord)
 
 type Resource = GResource Text
@@ -89,13 +91,15 @@ pResource = do
     symbol "}"
     return Resource{..}
 
-pColumnsList :: Parser (Maybe [Text])
-pColumnsList = optional $ do
-    symbol "columns"
-    symbol "["
-    columns <- pCommaSepList (pQuotedLiteral False)
-    symbol "]"
-    return columns
+pColumnsList :: Parser [Text]
+pColumnsList = go <|> return []
+    where
+        go = do
+            symbol "columns"
+            symbol "["
+            columns <- pCommaSepList (pQuotedLiteral False)
+            symbol "]"
+            return columns
 
 pTitleCasedWord :: Parser Text
 pTitleCasedWord = lexeme $ do

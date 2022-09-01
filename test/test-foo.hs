@@ -33,7 +33,7 @@ parsePass parser text = do
 actor1 = Actor
     { actorName = "MyActor"
     , actorTable = "actors"
-    , actorColumns = Just ["col1", "col2"]
+    , actorColumns = ["col1", "col2"]
     }
 
 actor1_desc = "actor MyActor {\
@@ -47,7 +47,7 @@ main = do
     parseCheck pActor actor1_desc actor1
     parseCheck (pQuotedLiteral True) "\"escapedquote\\\"here\"" "escapedquote\"here"
     parseCheck pActor "actor Actor { table \"tablename\" }" Actor
-        {actorName = "Actor", actorTable = "tablename", actorColumns = Nothing}
+        {actorName = "Actor", actorTable = "tablename", actorColumns = []}
     parsePass pActor "actor Actor_1 {table \"asdf\" }"
     parseFail pActor "actor Ac {table \"\"}"
     parsePass pResource "resource Re {table \"asdf\"}"
