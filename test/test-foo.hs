@@ -65,10 +65,10 @@ complexCase = parseCheck pAssoc "can_write(actor: Actor, resource: Doc) if 7 = a
                 permissionResource = OptTypeVar {otvarName = "resource", otvarType = Just "Doc"}
                 }
             ), 
-        assocDefinition = PEquals (VLiteral 7) (VVarField "actor" "age")}
+        assocDefinition = PEquals (VLitInt 7) (VVarField "actor" "age")}
 
 complexCase2 :: IO ()
-complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfasd) && 7 = 5" 
+complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfasd) && \"cinco\" = 5"
     Assoc { 
         assocHeader = AHPermission (
             Permission {
@@ -78,8 +78,8 @@ complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfas
                 }
             ), 
         assocDefinition = PAnd
-            (PCall $ PredCall "hola" ["asdfasd"])
-            (PEquals (VLiteral 7) (VLiteral 5))
+            (PCall $ PredCall "hola" [VVar "asdfasd"])
+            (PEquals (VLitString "cinco") (VLitInt 5))
             }
 
 complexCase3 :: IO ()
@@ -92,9 +92,9 @@ complexCase3 = parseCheck pAssoc "numbers(a, r: T) if a >4   || (r   <8   && a  
                 }
             ), 
         assocDefinition = POr
-            (PGreaterT (VVar "a") (VLiteral 4))
+            (PGreaterT (VVar "a") (VLitInt 4))
             (PAnd
-                (PLessT (VVar "r") (VLiteral 8))
+                (PLessT (VVar "r") (VLitInt 8))
                 (PEquals (VVar "a") (VVar "r")))
             }
 
