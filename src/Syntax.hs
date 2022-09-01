@@ -63,6 +63,23 @@ type Resource = GResource Text
 
 type TypedResource = GResource (Text, Text)
 
+-- very much mock
+fillColumnTypes :: Resource -> IO TypedResource
+fillColumnTypes (Resource name table cols) = do
+    return $ Resource name table typedCols
+        where
+            typedCols = do
+                untypedCol <- cols
+                let colType = case T.uncons untypedCol of
+                                   Just (c, _) -> typeFrom c
+                                   Nothing -> undefined
+                return (untypedCol, colType)
+            typeFrom c = case (ord c `mod` 3) of
+                0 -> "Int"
+                1 -> "Bool"
+                2 -> "String"
+                _ -> undefined
+
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
 
