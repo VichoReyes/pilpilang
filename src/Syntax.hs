@@ -143,17 +143,17 @@ pAssocHeader = lexeme $
 
 data Permission = Permission
     { permissionType :: PermissionType
-    , permissionActor :: OptTypeVar
-    , permissionResource :: OptTypeVar
+    , permissionActor :: TypedVar
+    , permissionResource :: TypedVar
     } deriving (Eq, Show, Ord)
 
 pPermission :: Parser Permission
 pPermission = lexeme $ do
     permissionType <- pPermissionType
     symbol "("
-    permissionActor <- pOptTypeVar
+    permissionActor <- pTypedVar
     symbol ","
-    permissionResource <- pOptTypeVar
+    permissionResource <- pTypedVar
     symbol ")"
     return Permission {..}
 
@@ -167,29 +167,28 @@ pPermissionType = lexeme $ choice
     , PCanDelete <$ pKeyword "can_delete"
     ]
 
-data OptTypeVar = OptTypeVar
-    { otvarName :: Text
-    , otvarType :: Maybe Text
+data TypedVar = TypedVar
+    { typedVarName :: Text
+    , typedVarType :: Text
     } deriving (Eq, Show, Ord)
 
-pOptTypeVar :: Parser OptTypeVar
-pOptTypeVar = lexeme $ do
-    otvarName <- pLowerCasedWord
-    otvarType <- optional $ do
-        symbol ":"
-        pTitleCasedWord <?> "type (an actor or resource)"
-    return OptTypeVar{..}
+pTypedVar :: Parser TypedVar
+pTypedVar = lexeme $ do
+    typedVarName <- pLowerCasedWord
+    symbol ":"
+    typedVarType <- pTitleCasedWord <?> "type (an actor or resource)"
+    return TypedVar{..}
 
 data Definition = Definition
     { defName :: Text
-    , defArgs :: [OptTypeVar]
+    , defArgs :: [TypedVar]
     } deriving (Eq, Show, Ord)
 
 pDefinition :: Parser Definition
 pDefinition = lexeme $ do
     defName <- pLowerCasedWord
     symbol "("
-    defArgs <- pCommaSepList pOptTypeVar
+    defArgs <- pCommaSepList pTypedVar
     symbol ")"
     return Definition {..}
 

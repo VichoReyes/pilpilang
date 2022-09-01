@@ -62,20 +62,20 @@ complexCase = parseCheck pAssoc "can_write(actor: Actor, resource: Doc) if 7 = a
         assocHeader = AHPermission (
             Permission {
                 permissionType = PCanWrite, 
-                permissionActor = OptTypeVar {otvarName = "actor", otvarType = Just "Actor"}, 
-                permissionResource = OptTypeVar {otvarName = "resource", otvarType = Just "Doc"}
+                permissionActor = TypedVar {typedVarName = "actor", typedVarType = "Actor"},
+                permissionResource = TypedVar {typedVarName = "resource", typedVarType = "Doc"}
                 }
             ), 
         assocDefinition = PEquals (VLitInt 7) (VVarField "actor" "age")}
 
 complexCase2 :: IO ()
-complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfasd) && \"cinco\" = 5"
+complexCase2 = parseCheck pAssoc "can_write(actor: T, resource: Doc) if hola(asdfasd) && \"cinco\" = 5"
     Assoc { 
         assocHeader = AHPermission (
             Permission {
                 permissionType = PCanWrite, 
-                permissionActor = OptTypeVar {otvarName = "actor", otvarType = Nothing}, 
-                permissionResource = OptTypeVar {otvarName = "resource", otvarType = Just "Doc"}
+                permissionActor = TypedVar {typedVarName = "actor", typedVarType = "T"},
+                permissionResource = TypedVar {typedVarName = "resource", typedVarType = "Doc"}
                 }
             ), 
         assocDefinition = PAnd
@@ -84,12 +84,12 @@ complexCase2 = parseCheck pAssoc "can_write(actor, resource: Doc) if hola(asdfas
             }
 
 complexCase3 :: IO ()
-complexCase3 = parseCheck pAssoc "numbers(a, r: T) if a >4   || (r   <8   && a  =  r)" 
+complexCase3 = parseCheck pAssoc "numbers(a: A, r: T) if a >4   || (r   <8   && a  =  r)"
     Assoc { 
         assocHeader = AHDef (
             Definition {
                 defName = "numbers", 
-                defArgs = [OptTypeVar "a" Nothing, OptTypeVar "r" (Just "T")]
+                defArgs = [TypedVar "a" "A", TypedVar "r" "T"]
                 }
             ), 
         assocDefinition = POr
