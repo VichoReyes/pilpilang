@@ -41,17 +41,25 @@ pAST = do
     astAssociations <- some (lexeme pAssoc)
     return AST{..}
 
-data Actor = Actor
+data GActor a = Actor
     { actorName :: Text
     , actorTable :: Text
-    , actorColumns :: Maybe [Text]
+    , actorColumns :: Maybe [a]
     } deriving (Eq, Show, Ord)
 
-data Resource = Resource
+type Actor = GActor Text
+
+type TypedActor = GActor (Text, Text)
+
+data GResource a = Resource
     { resourceName :: Text
     , resourceTable :: Text
-    , resourceColumns :: Maybe [Text]
+    , resourceColumns :: Maybe [a]
     } deriving (Eq, Show, Ord)
+
+type Resource = GResource Text
+
+type TypedResource = GResource (Text, Text)
 
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
@@ -85,7 +93,7 @@ pColumnsList :: Parser (Maybe [Text])
 pColumnsList = optional $ do
     symbol "columns"
     symbol "["
-    columns <- pCommaSepList (pQuotedLiteral True)
+    columns <- pCommaSepList (pQuotedLiteral False)
     symbol "]"
     return columns
 

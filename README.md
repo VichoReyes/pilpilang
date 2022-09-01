@@ -1,3 +1,13 @@
+# La idea
+
+La idea es que el compilador funcione con las siguientes fases:
+
+1. Parsear todo (done-ish)
+2. **TODO:** Comunicarse con la base de datos para tipar _solo las columnas en declaraciones de recurso/actor_.
+3. Hacer type-checking
+4. ???
+5. Profit
+
 # Comandos útiles
 
 Correr el programa (todavía no llego a esa etapa)
