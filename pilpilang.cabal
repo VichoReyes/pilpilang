@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               polar-parse
+name:               pilpilang
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
@@ -45,15 +45,16 @@ library
     exposed-modules: Syntax
     hs-source-dirs:  src
 
-executable polar-parse
+executable pilpilang
     import:           deps
-    build-depends:    polar-parse
+    build-depends:    pilpilang
     main-is:          Main.hs
     hs-source-dirs:   app
 
-Test-Suite Syntax-test
+Test-Suite pilpilang-test
     import:     deps
     type:       exitcode-stdio-1.0
-    main-is:    Spec.hs
     hs-source-dirs:   test
-    build-depends: polar-parse, hspec, hspec-megaparsec
+    main-is:    Spec.hs
+    other-modules: SyntaxSpec
+    build-depends: pilpilang, hspec, hspec-megaparsec
