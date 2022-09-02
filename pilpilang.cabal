@@ -41,7 +41,7 @@ common deps
 
 library
     import:          deps
-    exposed-modules: Syntax
+    exposed-modules: Syntax, Types
     hs-source-dirs:  src
 
 executable pilpilang
@@ -55,5 +55,5 @@ Test-Suite pilpilang-test
     type:       exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:    Spec.hs
-    other-modules: SyntaxSpec
+    other-modules: SyntaxSpec, TypesSpec
     build-depends: pilpilang, hspec, hspec-megaparsec

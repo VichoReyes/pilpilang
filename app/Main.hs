@@ -11,7 +11,7 @@ import qualified Data.Text.IO as TIO
 main :: IO ()
 main = do
     args <- getArgs
-    if (null args)
+    if null args
     then do
         putStrLn "Hello Pilpilang!"
         contents <- T.pack <$> getContents

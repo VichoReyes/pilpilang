@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use <$>" #-}
 
 module Syntax where
 
@@ -65,9 +67,6 @@ actor :: Text -> Text -> [a] -> GEntity ActorMarker a
 resource :: Text -> Text -> [a] -> GEntity ResourceMarker a
 actor = Entity
 resource = Entity
-
-class ColumnTypeProvider a where
-    fillTypes :: a -> GEntity klass Text -> IO (GEntity klass (Text, Text))
 
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')

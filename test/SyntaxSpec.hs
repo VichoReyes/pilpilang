@@ -5,38 +5,12 @@ module SyntaxSpec (main, spec) where
 import Text.Megaparsec
 import Test.Hspec
 import Test.Hspec.Megaparsec
-import Data.Char (ord)
 import Syntax
-import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Data.Text.IO as TIO
 
 main :: IO ()
 main = hspec spec
-
-
-data MockDB
-
-instance ColumnTypeProvider MockDB where
-    fillTypes _ = fillColumnTypes
-
--- very much mock
-fillColumnTypes :: GEntity a Text -> IO (GEntity a (Text, Text))
-fillColumnTypes (Entity name table cols) = do
-    return $ Entity name table typedCols
-        where
-            typedCols = do
-                untypedCol <- cols
-                let colType = case T.uncons untypedCol of
-                                   Just (c, _) -> typeFrom c
-                                   Nothing -> undefined
-                return (untypedCol, colType)
-            typeFrom c = case (ord c `mod` 3) of
-                0 -> "Int"
-                1 -> "Bool"
-                2 -> "String"
-                _ -> undefined
-
 
 actor1 :: Actor
 actor1 = actor "MyActor" "actors" ["col1", "col2"]
@@ -57,12 +31,12 @@ spec = do
             parse pActor "" actor1_desc `shouldParse` actor1
         it "parses an actor without columns" $
             parse pActor "" "actor Actor { table \"tablename\" }" `shouldParse`
-                (actor "Actor" "tablename" [])
+                actor "Actor" "tablename" []
         it "handles underscores" $
             parse pActor "" `shouldSucceedOn` "actor Actor_1 {table \"asdf\" }"
         it "disallows empty table names" $
             parse pActor "" `shouldFailOn` "actor Ac { table \"\" }"
-    
+
     describe "pResource" $
         it "works" $
             parse pResource "" `shouldSucceedOn` "resource Re {table \"asdf\"}"
@@ -74,14 +48,14 @@ spec = do
     describe "pAssoc" $ do
         it "works" $
             parse pAssoc "" "can_write(actor: Actor, resource: Doc) if 7 = actor.age" `shouldParse`
-                Assoc { 
+                Assoc {
                     assocHeader = AHPermission (
                         Permission {
-                            permissionType = PCanWrite, 
+                            permissionType = PCanWrite,
                             permissionActor = TypedVar {typedVarName = "actor", typedVarType = "Actor"},
                             permissionResource = TypedVar {typedVarName = "resource", typedVarType = "Doc"}
                             }
-                        ), 
+                        ),
                     assocDefinition = PEquals (VLitInt 7) (VVarField "actor" "age")}
         it "handles AND predicates (&&)" $
             parse pAssoc "" "can_write(actor: T, resource: Doc) if hola(asdfasd) && \"cinco\" = 5" `parseSatisfies`
@@ -93,7 +67,7 @@ spec = do
                 (\assoc -> case assocDefinition assoc of
                     (POr (PGreaterT _ _) (PAnd (PLessT _ _) (PEquals _ _))) -> True
                     _ -> False)
-    
+
     describe "pAST" $
         it "parses the twitter example" $
             TIO.readFile "test/examples/twitter.pilpil" >>= (parse pAST "" `shouldSucceedOn`)
