@@ -1,4 +1,4 @@
-# Revision history for polar-parse
+# Revision history for pilpilang
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

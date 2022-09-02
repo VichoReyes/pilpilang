@@ -10,21 +10,32 @@ La idea es que el compilador funcione con las siguientes fases:
 
 # Comandos útiles
 
-Correr el programa (todavía no llego a esa etapa)
+Correr el programa (aunque por el momento el programa es más para hacer pruebas que algo útil):
 
-```
-cabal run polar-parse
+```bash
+cabal run pilpilang -- [argumentos]
+# ejemplos
+cabal run pilpilang -- AST test/examples/twitter.pilpil
 ```
 
 Correr los tests:
 
-```
+```bash
 cabal test
+# o, si uno quiere ver el output incluso de los casos exitosos:
+cabal test --test-show-details=streaming
+```
+
+Para experimentar con las funciones, resulta útil GHCi:
+
+```bash
+cabal repl # carga la librería
+cabal repl pilpilang-test # carga la test suite
 ```
 
 ## Por qué haskell?
 
-Dicen que es el mejor lenguaje para escribir compiladores, ya que los compiladores son simplemente funciones. Además, cuándo volveré a la oportunidad de usarlo?
+Dicen que es el mejor lenguaje para escribir compiladores, ya que los compiladores son simplemente funciones. Además, cuándo volveré a tener la oportunidad de usarlo?
 
 # Troubleshooting
 
