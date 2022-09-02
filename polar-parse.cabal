@@ -29,6 +29,16 @@ common deps
         , megaparsec
         , base >=4.14
         , parser-combinators
+    ghc-options:   -Wall
+                   -Wcompat
+                   -Widentities
+                   -Wincomplete-record-updates
+                   -Wincomplete-uni-patterns
+                   -Wmissing-home-modules
+                   -Wpartial-fields
+                   -Wredundant-constraints
+                   -Wno-unused-do-bind
+
 
 library
     import:          deps
@@ -41,9 +51,9 @@ executable polar-parse
     main-is:          Main.hs
     hs-source-dirs:   app
 
-Test-Suite test-foo
-    import:          deps
+Test-Suite Syntax-test
+    import:     deps
     type:       exitcode-stdio-1.0
-    main-is:    test-foo.hs
+    main-is:    Spec.hs
     hs-source-dirs:   test
-    build-depends: polar-parse
+    build-depends: polar-parse, hspec, hspec-megaparsec

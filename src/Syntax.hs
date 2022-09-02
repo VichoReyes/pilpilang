@@ -5,7 +5,6 @@ module Syntax where
 
 import qualified Data.Text as T
 import Data.Text (Text)
-import Data.Maybe (fromMaybe)
 import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -119,11 +118,11 @@ pCommaSepList :: Parser a -> Parser [a]
 pCommaSepList pElem = pCommaSepList2 <|> pure []
     where
         pCommaSepList2 = do
-            elem <- pElem
+            el <- pElem
             canContinue <- True <$ symbol "," <|> pure False
             if canContinue
-                then (elem : ) <$> pCommaSepList pElem
-                else return [elem]
+                then (el : ) <$> pCommaSepList pElem
+                else return [el]
 
 pQuotedLiteral :: Bool -> Parser Text
 pQuotedLiteral allowEmpty = lexeme $ do

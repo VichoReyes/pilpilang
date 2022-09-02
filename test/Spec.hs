@@ -4,7 +4,6 @@ module Main (main) where
 
 import System.Exit (exitFailure)
 import Text.Megaparsec
-import Text.Megaparsec.Char
 import Data.Char (ord)
 import Data.Either (isLeft, isRight)
 import Syntax
@@ -32,7 +31,7 @@ parsePass parser text = do
       then return ()
       else exitFailure
 
-data MockDB = MockDB
+data MockDB
 
 instance ColumnTypeProvider MockDB where
     fillTypes _ = fillColumnTypes
@@ -54,13 +53,16 @@ fillColumnTypes (Entity name table cols) = do
                 2 -> "String"
                 _ -> undefined
 
+actor1 :: Actor
 actor1 = actor "MyActor" "actors" ["col1", "col2"]
 
+actor1_desc :: Text
 actor1_desc = "actor MyActor {\
 \    table \"actors\"\
 \    columns [\"col1\", \"col2\"] \
 \ }"
 
+main :: IO ()
 main = do
     parseFail pActor "actorActor { table \"tablename\" columns []}"
     parsePass pActor "actor Actor { table \"tablename\" columns []}"
@@ -74,6 +76,7 @@ main = do
     complexCase
     complexCase2
     complexCase3
+    twitterCase
 
 
 complexCase :: IO ()
