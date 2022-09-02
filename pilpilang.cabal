@@ -3,16 +3,15 @@ name:               pilpilang
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
--- synopsis:
+synopsis:           An authorization language that targets postgres' RLS policies
 
 -- A longer description of the package.
 -- description:
 
 -- A URL where users can report bugs.
--- bug-reports:
+bug-reports:        https://github.com/VichoReyes/pilpilang/issues
 
--- The license under which the package is released.
--- license:
+license:            GPL-3.0-or-later
 author:             Vicente Reyes
 maintainer:         vreyesvaldivieso@gmail.com
 
