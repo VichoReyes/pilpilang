@@ -28,6 +28,7 @@ common deps
         , megaparsec
         , base >=4.14
         , parser-combinators
+        , mtl
     ghc-options:   -Wall
                    -Wcompat
                    -Widentities

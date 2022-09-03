@@ -7,7 +7,9 @@ import Syntax
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Char (ord)
-import Test.Hspec (Spec)
+import Test.Hspec (Spec, describe, it, shouldBe)
+import Control.Monad.State (execStateT)
+import qualified Data.Map as M
 
 data MockDB
 
@@ -15,7 +17,7 @@ instance ColumnTypeProvider MockDB where
     fillTypes _ = fillColumnTypes
 
 -- very much mock
-fillColumnTypes :: GEntity a Text -> IO (GEntity a (Text, Text))
+fillColumnTypes :: GEntity a Text -> Either TypeError (GEntity a (Text, Text))
 fillColumnTypes (Entity name table cols) = do
     return $ Entity name table typedCols
         where
@@ -31,6 +33,19 @@ fillColumnTypes (Entity name table cols) = do
                 2 -> "String"
                 _ -> undefined
 
+completeTypeInfo :: TypeInfo
+completeTypeInfo = TypeInfo 
+    { actors = M.fromList [("A", M.fromList [("something", "Int"), ("else", "String")])]
+    , resources = M.empty
+    , functions = M.empty
+    }
+
+actorA ::TypedActor
+actorA = Entity "A" undefined [("something", "Int"), ("else", "String")]
+
 spec :: Spec
 spec = do
-    return ()
+    describe "mkTypeInfo" $
+        it "works" $
+            execStateT (mkTypeInfo [actorA] []) emptyTypeInfo
+                `shouldBe` Right completeTypeInfo
