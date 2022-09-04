@@ -58,9 +58,6 @@ spec = do
         it "gets column types" $ do
             twitterExample <- TIO.readFile "test/examples/twitter.pilpil"
             let ast = fromRight undefined $ parse pAST "twitter.pilpil" twitterExample
-            execStateT (typeCheckAST MockDB ast) emptyTypeInfo `shouldBe`
-                Right TypeInfo {
-                   entities = M.fromList [ ("User", (EActor, M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")]))
-                                         , ("Tweet", (EResource, M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")]))],
-                   functions = M.empty
-                   }
+            (entities <$> execStateT (typeCheckAST MockDB ast) emptyTypeInfo) `shouldBe`
+                Right (M.fromList [ ("User", (EActor, M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")]))
+                                  , ("Tweet", (EResource, M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")]))])
