@@ -46,13 +46,13 @@ emptyTypeInfo = TypeInfo
 type TypingMonad a = StateT TypeInfo (Either TypeError) a
 
 -- TODO check for repeats
-mkColumnMap :: GEntity klass (Text, Text) -> Either TypeError (Map Text Type)
+mkColumnMap :: GEntity klass (Text, Text) -> TypingMonad (Map Text Type)
 mkColumnMap entity = do
     let columns = entityColumns entity
     let columnMap = M.fromList columns
     if M.size columnMap == length columns
         then return columnMap
-        else Left (TypeError ("duplicated column in "<>entityName entity))
+        else lift $ Left (TypeError ("duplicated column in "<>entityName entity))
 
 mkTypeInfo :: [TypedActor] -> [TypedResource] -> TypingMonad ()
 mkTypeInfo acts ress = do
@@ -62,9 +62,9 @@ mkTypeInfo acts ress = do
 addEntity :: EntityClass -> TypedEntity a -> TypingMonad ()
 addEntity klass a = do
     typeInfo <- get
-    actorColumnsMap <- lift (mkColumnMap a)
+    actorColumnsMap <- mkColumnMap a
     if M.member (entityName a) (entities typeInfo)
-        then undefined
+        then lift . Left . TypeError $ "entity "<>entityName a<>" defined twice"
         else put typeInfo {entities = M.insert (entityName a) (klass, actorColumnsMap) (entities typeInfo)}
 
 typeCheckAST :: ColumnTypeProvider a => a -> AST -> TypingMonad ()

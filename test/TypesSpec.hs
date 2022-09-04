@@ -8,11 +8,11 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Char (ord)
-import Test.Hspec (Spec, describe, it, shouldBe)
+import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 import Control.Monad.State (execStateT)
 import qualified Data.Map as M
 import Text.Megaparsec (parse)
-import Data.Either (fromRight)
+import Data.Either (fromRight, isLeft)
 
 data MockDB = MockDB
 
@@ -47,10 +47,13 @@ actorA = Entity "A" undefined [("something", "Int"), ("else", "String")]
 
 spec :: Spec
 spec = do
-    describe "mkTypeInfo" $
+    describe "mkTypeInfo" $ do
         it "works" $
             execStateT (mkTypeInfo [actorA] []) emptyTypeInfo
                 `shouldBe` Right completeTypeInfo
+        it "fails on duplicates" $
+            execStateT (mkTypeInfo [actorA, actorA] []) emptyTypeInfo
+                `shouldSatisfy` isLeft
     describe "typeCheckAST" $ do
         it "gets column types" $ do
             twitterExample <- TIO.readFile "test/examples/twitter.pilpil"
