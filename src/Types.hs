@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Types where
 
-import Syntax (GEntity (entityColumns, entityName), TypedActor, TypedResource)
+import Syntax (GEntity (entityColumns, entityName), TypedActor, TypedResource, AST (astActors, astResources))
 import Data.Text (Text)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Control.Monad.State (StateT, MonadState (put, get), MonadTrans (lift))
-import Control.Monad (forM_)
+import Control.Monad (forM_, forM)
 
 class ColumnTypeProvider a where
     fillTypes :: a -> GEntity klass Text -> Either TypeError (GEntity klass (Text, Text))
@@ -72,12 +72,10 @@ addResource r = do
     actorColumnsMap <- lift (mkColumnMap r)
     if M.member (entityName r) (actors typeInfo) || M.member (entityName r) (resources typeInfo)
         then undefined
-        else put typeInfo {actors = M.insert (entityName r) actorColumnsMap (actors typeInfo)}
+        else put typeInfo {resources = M.insert (entityName r) actorColumnsMap (resources typeInfo)}
 
-{-
-typeCheckAST :: (ColumnTypeProvider a) => a -> AST -> TypingMonad TypedAST
+typeCheckAST :: ColumnTypeProvider a => a -> AST -> TypingMonad ()
 typeCheckAST provider ast = do
-    explicitAST <- fillTypes provider ast
-    typeInfo <- mkTypeInfo explicitAST
-    undefined
--}
+    typedActors <- forM (astActors ast) (lift . fillTypes provider)
+    typedResources <- forM (astResources ast) (lift . fillTypes provider)
+    mkTypeInfo typedActors typedResources

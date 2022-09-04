@@ -6,12 +6,15 @@ import Types
 import Syntax
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import Data.Char (ord)
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Control.Monad.State (execStateT)
 import qualified Data.Map as M
+import Text.Megaparsec (parse)
+import Data.Either (fromRight)
 
-data MockDB
+data MockDB = MockDB
 
 instance ColumnTypeProvider MockDB where
     fillTypes _ = fillColumnTypes
@@ -49,3 +52,13 @@ spec = do
         it "works" $
             execStateT (mkTypeInfo [actorA] []) emptyTypeInfo
                 `shouldBe` Right completeTypeInfo
+    describe "typeCheckAST" $ do
+        it "gets column types" $ do
+            twitterExample <- TIO.readFile "test/examples/twitter.pilpil"
+            let ast = fromRight undefined $ parse pAST "twitter.pilpil" twitterExample
+            execStateT (typeCheckAST MockDB ast) emptyTypeInfo `shouldBe`
+                Right TypeInfo {
+                   actors = M.fromList [("User", M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")])],
+                   resources = M.fromList [("Tweet", M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")])],
+                   functions = M.empty
+                   }
