@@ -38,8 +38,7 @@ fillColumnTypes (Entity name table cols) = do
 
 completeTypeInfo :: TypeInfo
 completeTypeInfo = TypeInfo 
-    { actors = M.fromList [("A", M.fromList [("something", "Int"), ("else", "String")])]
-    , resources = M.empty
+    { entities = M.fromList [("A", (EActor, M.fromList [("something", "Int"), ("else", "String")]))]
     , functions = M.empty
     }
 
@@ -58,7 +57,7 @@ spec = do
             let ast = fromRight undefined $ parse pAST "twitter.pilpil" twitterExample
             execStateT (typeCheckAST MockDB ast) emptyTypeInfo `shouldBe`
                 Right TypeInfo {
-                   actors = M.fromList [("User", M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")])],
-                   resources = M.fromList [("Tweet", M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")])],
+                   entities = M.fromList [ ("User", (EActor, M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")]))
+                                         , ("Tweet", (EResource, M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")]))],
                    functions = M.empty
                    }

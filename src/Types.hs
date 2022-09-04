@@ -29,16 +29,17 @@ type Type = Text
 
 type TypedEntity a = GEntity a (Text, Text)
 
+data EntityClass = EActor | EResource
+    deriving (Eq, Ord, Show)
+
 data TypeInfo = TypeInfo
-    { actors :: Map Text (Map Text Type) -- actor name -> column -> type
-    , resources :: Map Text (Map Text Type) -- same
+    { entities :: Map Text (EntityClass, Map Text Type) -- actor/resource name -> (Actor|Resource, column -> type)
     , functions :: Map Text [Type] -- types of the arguments
     } deriving (Eq, Ord, Show)
 
 emptyTypeInfo :: TypeInfo
 emptyTypeInfo = TypeInfo
-    { actors = M.empty
-    , resources = M.empty
+    { entities = M.empty
     , functions = M.empty
     }
 
@@ -55,24 +56,16 @@ mkColumnMap entity = do
 
 mkTypeInfo :: [TypedActor] -> [TypedResource] -> TypingMonad ()
 mkTypeInfo acts ress = do
-    forM_ acts addActor
-    forM_ ress addResource
+    forM_ acts (addEntity EActor)
+    forM_ ress (addEntity EResource)
 
-addActor :: TypedEntity a -> TypingMonad ()
-addActor a = do
+addEntity :: EntityClass -> TypedEntity a -> TypingMonad ()
+addEntity klass a = do
     typeInfo <- get
     actorColumnsMap <- lift (mkColumnMap a)
-    if M.member (entityName a) (actors typeInfo) || M.member (entityName a) (resources typeInfo)
+    if M.member (entityName a) (entities typeInfo)
         then undefined
-        else put typeInfo {actors = M.insert (entityName a) actorColumnsMap (actors typeInfo)}
-
-addResource :: TypedResource -> TypingMonad ()
-addResource r = do
-    typeInfo <- get
-    actorColumnsMap <- lift (mkColumnMap r)
-    if M.member (entityName r) (actors typeInfo) || M.member (entityName r) (resources typeInfo)
-        then undefined
-        else put typeInfo {resources = M.insert (entityName r) actorColumnsMap (resources typeInfo)}
+        else put typeInfo {entities = M.insert (entityName a) (klass, actorColumnsMap) (entities typeInfo)}
 
 typeCheckAST :: ColumnTypeProvider a => a -> AST -> TypingMonad ()
 typeCheckAST provider ast = do
