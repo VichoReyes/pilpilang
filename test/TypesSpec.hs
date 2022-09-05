@@ -37,10 +37,8 @@ fillColumnTypes (Entity name table cols) = do
                 _ -> undefined
 
 completeTypeInfo :: TypeInfo
-completeTypeInfo = TypeInfo 
-    { entities = M.fromList [("A", (EActor, M.fromList [("something", "Int"), ("else", "String")]))]
-    , functions = M.empty
-    }
+completeTypeInfo = mempty 
+    { entities = M.fromList [("A", (EActor, M.fromList [("something", "Int"), ("else", "String")]))]}
 
 actorA ::TypedActor
 actorA = Entity "A" undefined [("something", "Int"), ("else", "String")]
@@ -49,15 +47,15 @@ spec :: Spec
 spec = do
     describe "mkTypeInfo" $ do
         it "works" $
-            execStateT (mkTypeInfo [actorA] []) emptyTypeInfo
+            execStateT (mkTypeInfo [actorA] []) mempty
                 `shouldBe` Right completeTypeInfo
         it "fails on duplicates" $
-            execStateT (mkTypeInfo [actorA, actorA] []) emptyTypeInfo
+            execStateT (mkTypeInfo [actorA, actorA] []) mempty
                 `shouldSatisfy` isLeft
-    describe "typeCheckAST" $ do
+    describe "mkGlobals" $ do
         it "gets column types" $ do
             twitterExample <- TIO.readFile "test/examples/twitter.pilpil"
             let ast = fromRight undefined $ parse pAST "twitter.pilpil" twitterExample
-            (entities <$> execStateT (typeCheckAST MockDB ast) emptyTypeInfo) `shouldBe`
+            (entities <$> execStateT (mkGlobals MockDB ast) mempty) `shouldBe`
                 Right (M.fromList [ ("User", (EActor, M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")]))
                                   , ("Tweet", (EResource, M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")]))])
