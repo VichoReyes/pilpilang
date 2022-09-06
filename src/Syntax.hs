@@ -203,7 +203,7 @@ pDefinition = lexeme $ do
     return Definition {..}
 
 data Predicate
-    = PCall PredCall
+    = PredCall Text [Value]
     | PAlways
     | PAnd Predicate Predicate
     | POr Predicate Predicate
@@ -216,7 +216,7 @@ pPredicate :: Parser Predicate
 pPredicate = makeExprParser pTerm operatorTable
     where
         pTerm = choice
-            [ PCall <$> try pPredCall
+            [ try pPredCall
             -- TODO: Do this with makeExprParser too
             , PEquals <$> try (pValue <* symbol "=") <*> pValue
             , PAlways <$ string "always"
@@ -229,18 +229,13 @@ pPredicate = makeExprParser pTerm operatorTable
             , InfixR (POr <$ symbol "||")
             ]]
 
-data PredCall = PredCall
-    { predCallName :: Text
-    , predCallArgs :: [Value]
-    } deriving (Eq, Show, Ord)
-
-pPredCall :: Parser PredCall
+pPredCall :: Parser Predicate
 pPredCall = do
-    predCallName <- pLowerCasedWord
+    name <- pLowerCasedWord
     symbol "("
-    predCallArgs <- pCommaSepList pValue
+    args <- pCommaSepList pValue
     symbol ")"
-    return PredCall {..}
+    return $ PredCall name args
 
 
 data Value

@@ -89,6 +89,6 @@ spec = do
                 `shouldBe` Right "String"
     describe "cPredicate" $ do
         it "works" $
-            runReaderT (cPredicate (PCall (PredCall "older_than" [VVar "andy", VLitInt 18]))) sampleEnv
+            runReaderT (cPredicate (PredCall "older_than" [VVar "andy", VLitInt 18])) sampleEnv
                 `shouldBe` Right ()
 

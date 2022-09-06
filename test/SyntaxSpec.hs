@@ -60,7 +60,7 @@ spec = do
         it "handles AND predicates (&&)" $
             parse pAssoc "" "can_write(actor: T, resource: Doc) if hola(asdfasd) && \"cinco\" = 5" `parseSatisfies`
                 (\assoc -> case assocDefinition assoc of
-                    (PAnd (PCall _) (PEquals _ _)) -> True
+                    (PAnd (PredCall _ _) (PEquals _ _)) -> True
                     _ -> False)
         it "handles OR predicates (||)" $
             parse pAssoc "" "numbers(a: A, r: T) if a >4   || (r   <8   && a  =  r)" `parseSatisfies`

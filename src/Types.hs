@@ -121,7 +121,7 @@ var2pair :: TypedVar -> (Text, Type)
 var2pair var = (typedVarName var, typedVarType var)
 
 cPredicate :: Predicate -> TypeCheck ()
-cPredicate (PCall (PredCall predName args)) = do
+cPredicate (PredCall predName args) = do
     expectedTypes <- cLookUp (M.lookup predName . functions) $ 
         (predName<>" not defined")
     actualTypes <- forM args cValue
