@@ -127,9 +127,9 @@ cPredicate (PredCall predName args) = do
     actualTypes <- forM args cValue
     when (length expectedTypes /= length actualTypes) $
         cTypeError (predName<>" call with wrong number of arguments")
-    forM_ (zip expectedTypes actualTypes) $ \(exp, act) ->
-        when (exp /= act)
-            (cTypeError $ "in call to "<>predName<>": expected "<>exp<>", found "<>act)
+    forM_ (zip expectedTypes actualTypes) $ \(ex, act) ->
+        when (ex /= act)
+            (cTypeError $ "in call to "<>predName<>": expected "<>ex<>", found "<>act)
 
 cValue :: Value -> TypeCheck Type
 cValue (VLitInt _) = return "Int"
