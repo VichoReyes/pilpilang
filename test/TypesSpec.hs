@@ -12,7 +12,7 @@ import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 import Control.Monad.State (execStateT)
 import qualified Data.Map as M
 import Text.Megaparsec (parse)
-import Data.Either (fromRight, isLeft)
+import Data.Either (fromRight, isLeft, isRight)
 import Control.Monad.Reader (ReaderT(runReaderT))
 
 data MockDB = MockDB
@@ -88,7 +88,18 @@ spec = do
             runReaderT (cValue (VVarField "andy" "name")) sampleEnv
                 `shouldBe` Right "String"
     describe "cPredicate" $ do
-        it "works" $
+        it "works on predicates" $ do
             runReaderT (cPredicate (PredCall "older_than" [VVar "andy", VLitInt 18])) sampleEnv
                 `shouldBe` Right ()
+            runReaderT (cPredicate (PredCall "older_than" [VVarField "andy" "name", VLitInt 18])) sampleEnv
+                `shouldSatisfy` isLeft
+        it "val1 = val2: works on correct types" $
+            runReaderT (cPredicate (PEquals (VVarField "andy" "age") (VLitInt 18))) sampleEnv
+                `shouldSatisfy` isRight
+        it "val1 = val2: fails on mismatched types" $
+            runReaderT (cPredicate (PEquals (VVarField "andy" "name") (VLitInt 18))) sampleEnv
+                `shouldSatisfy` isLeft
+        it "val1 = val2: fails on matched but non-primitive types" $
+            runReaderT (cPredicate (PEquals (VVar "andy") (VVar "andy"))) sampleEnv
+                `shouldSatisfy` isLeft
 

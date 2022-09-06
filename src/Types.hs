@@ -8,6 +8,7 @@ import qualified Data.Map as M
 import Control.Monad.State (StateT, MonadState (put, get), MonadTrans (lift), execStateT)
 import Control.Monad (forM_, forM, when)
 import Control.Monad.Reader (ReaderT (runReaderT), MonadReader (local, ask))
+import qualified Data.Text as T
 
 class ColumnTypeProvider a where
     fillTypes :: a -> GEntity klass Text -> Either TypeError (GEntity klass (Text, Text))
@@ -130,6 +131,29 @@ cPredicate (PredCall predName args) = do
     forM_ (zip expectedTypes actualTypes) $ \(ex, act) ->
         when (ex /= act)
             (cTypeError $ "in call to "<>predName<>": expected "<>ex<>", found "<>act)
+cPredicate PAlways = return ()
+cPredicate (PAnd p1 p2) = cPredicate p1 >> cPredicate p2
+cPredicate (POr p1 p2) = cPredicate p1 >> cPredicate p2
+cPredicate (PEquals val1 val2) = do
+    type1 <- cValue val1
+    type2 <- cValue val2
+    when (type1 /= type2) $ do
+        -- TODO improve representation
+        let val1' = T.pack (show val1)
+        let val2' = T.pack (show val2)
+        cTypeError ("mismatched types in "<>val1'<>" = "<>val2'<>
+            ": first is "<>type1<>" and second is "<>type2)
+    when (type1 `notElem` ["String", "Int", "Bool"]) $
+        cTypeError ("cannot compare "<>type1<>"s, can only compare Strings, Ints and Bools")
+cPredicate (PGreaterT val1 val2) = do
+    type1 <- cValue val1
+    when (type1 /= "Int") $
+        cTypeError (type1<>"doesn't support order comparison")
+    type2 <- cValue val2
+    when (type2 /= "Int") $
+        cTypeError (type2<>"doesn't support order comparison")
+-- reuse the last one
+cPredicate (PLessT val1 val2) = cPredicate (PGreaterT val1 val2)
 
 cValue :: Value -> TypeCheck Type
 cValue (VLitInt _) = return "Int"
