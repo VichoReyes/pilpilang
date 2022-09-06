@@ -13,6 +13,7 @@ import Control.Monad.State (execStateT)
 import qualified Data.Map as M
 import Text.Megaparsec (parse)
 import Data.Either (fromRight, isLeft)
+import Control.Monad.Reader (ReaderT(runReaderT))
 
 data MockDB = MockDB
 
@@ -43,6 +44,15 @@ completeTypeInfo = mempty
 actorA ::TypedActor
 actorA = Entity "A" undefined [("something", "Int"), ("else", "String")]
 
+sampleEnv :: TypeInfo
+sampleEnv = TypeInfo { entities = M.fromList 
+    [ ("User", (EActor, M.fromList [("id", "Int"), ("name", "String"), ("age", "Int")]))
+    , ("Post", (EResource, M.fromList [("contents", "String"), ("private", "Bool")]))
+    ]
+    , functions = M.fromList [("older_than", ["User", "Int"])]
+    , variables = M.fromList [("andy", "User")]
+}
+
 spec :: Spec
 spec = do
     describe "mkTypeInfo" $ do
@@ -59,3 +69,26 @@ spec = do
             (entities <$> execStateT (mkGlobals MockDB ast) mempty) `shouldBe`
                 Right (M.fromList [ ("User", (EActor, M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")]))
                                   , ("Tweet", (EResource, M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")]))])
+    describe "cValue" $ do
+        it "fails on non-existing variables" $
+            runReaderT (cValue (VVar "fake")) sampleEnv `shouldBe` Left (TypeError "fake not found")
+        it "fails on non-existing fields on variables" $
+            runReaderT (cValue (VVar "andy.favorites")) sampleEnv
+                `shouldBe` Left (TypeError "andy.favorites not found")
+        it "works on literals, ignoring env" $ do
+            runReaderT (cValue (VLitBool True)) undefined
+                `shouldBe` Right "Bool"
+            runReaderT (cValue (VLitString "Something")) undefined
+                `shouldBe` Right "String"
+            runReaderT (cValue (VLitInt 4)) undefined
+                `shouldBe` Right "Int"
+        it "works on var fields" $ do
+            runReaderT (cValue (VVarField "andy" "age")) sampleEnv
+                `shouldBe` Right "Int"
+            runReaderT (cValue (VVarField "andy" "name")) sampleEnv
+                `shouldBe` Right "String"
+    describe "cPredicate" $ do
+        it "works" $
+            runReaderT (cPredicate (PCall (PredCall "older_than" [VVar "andy", VLitInt 18]))) sampleEnv
+                `shouldBe` Right ()
+
