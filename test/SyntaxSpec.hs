@@ -13,12 +13,12 @@ main :: IO ()
 main = hspec spec
 
 actor1 :: Actor
-actor1 = actor "MyActor" "actors" ["col1", "col2"]
+actor1 = actor "MyActor" "actors" [("col1", "Int"), ("col2", "Bool")]
 
 actor1_desc :: Text
 actor1_desc = "actor MyActor {\
 \    table \"actors\"\
-\    columns [\"col1\", \"col2\"] \
+\    columns [col1: Int, \"col2\": Bool] \
 \ }"
 
 spec :: Spec

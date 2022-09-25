@@ -55,12 +55,10 @@ data GEntity entityClass columnType = Entity
     } deriving (Eq, Show, Ord)
 
 data ActorMarker
-type Actor = GEntity ActorMarker Text
-type TypedActor = GEntity ActorMarker (Text, Text)
+type Actor = GEntity ActorMarker (Text, Text)
 
 data ResourceMarker
-type Resource = GEntity ResourceMarker Text
-type TypedResource = GEntity ResourceMarker (Text, Text)
+type Resource = GEntity ResourceMarker (Text, Text)
 
 -- constructors
 actor :: Text -> Text -> [a] -> GEntity ActorMarker a
@@ -77,7 +75,7 @@ pActor = pEntity "actor"
 pResource :: Parser Resource
 pResource = pEntity "resource"
 
-pEntity :: Text -> Parser (GEntity entityClass Text)
+pEntity :: Text -> Parser (GEntity entityClass (Text, Text))
 pEntity keyword = do
     pKeyword keyword
     entityName <- pTitleCasedWord
@@ -89,15 +87,20 @@ pEntity keyword = do
     symbol "}"
     return $ Entity {..}
 
-pColumnsList :: Parser [Text]
+pColumnsList :: Parser [(Text, Text)]
 pColumnsList = go <|> return []
     where
         go = do
             symbol "columns"
             symbol "["
-            columns <- pCommaSepList (pQuotedLiteral False)
+            columns <- pCommaSepList pTypedColumn
             symbol "]"
             return columns
+        pTypedColumn = do
+            colName <- pLowerCasedWord <|> pQuotedLiteral False
+            symbol ":"
+            colType <- pTitleCasedWord
+            return (colName, colType)
 
 pTitleCasedWord :: Parser Text
 pTitleCasedWord = lexeme $ do

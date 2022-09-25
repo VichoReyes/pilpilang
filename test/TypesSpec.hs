@@ -41,7 +41,7 @@ completeTypeInfo :: TypeInfo
 completeTypeInfo = mempty 
     { entities = M.fromList [("A", (EActor, M.fromList [("something", "Int"), ("else", "String")]))]}
 
-actorA ::TypedActor
+actorA :: Actor
 actorA = Entity "A" undefined [("something", "Int"), ("else", "String")]
 
 sampleEnv :: TypeInfo
@@ -67,8 +67,8 @@ spec = do
             twitterExample <- TIO.readFile "test/examples/twitter.pilpil"
             let ast = fromRight undefined $ parse pAST "twitter.pilpil" twitterExample
             (entities <$> execStateT (mkGlobals MockDB ast) mempty) `shouldBe`
-                Right (M.fromList [ ("User", (EActor, M.fromList [("id", "Int"), ("password", "Bool"), ("profile", "Bool"), ("username", "Int")]))
-                                  , ("Tweet", (EResource, M.fromList [("contents", "Int"), ("date", "Bool"), ("user_id", "Int")]))])
+                Right (M.fromList [ ("User", (EActor, M.fromList [("id", "Int"), ("password", "String"), ("profile", "String"), ("username", "String")]))
+                                  , ("Tweet", (EResource, M.fromList [("contents", "String"), ("date", "Int"), ("user_id", "Int")]))])
     describe "cValue" $ do
         it "fails on non-existing variables" $
             runReaderT (cValue (VVar "fake")) sampleEnv `shouldBe` Left (TypeError "fake not found")

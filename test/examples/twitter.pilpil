@@ -1,19 +1,19 @@
 actor User {
     table "twitter_users"
     columns [
-        "id",
-        "username",
-        "password",
-        "profile",
+        id: Int,
+        username: String,
+        "password": String,
+        "profile": String,
     ]
 }
 
 resource Tweet {
     table "twitter_tweets"
     columns [
-        "contents",
-        "date",
-        "user_id"
+        contents: String,
+        date: Int,
+        user_id: Int
     ]
 }
 

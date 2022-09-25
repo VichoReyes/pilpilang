@@ -61,7 +61,7 @@ mkColumnMap entity = do
         then return columnMap
         else lift $ Left (TypeError ("duplicated column in "<>entityName entity))
 
-mkTypeInfo :: [TypedActor] -> [TypedResource] -> TypeGen ()
+mkTypeInfo :: [Actor] -> [Resource] -> TypeGen ()
 mkTypeInfo acts ress = do
     forM_ acts (addEntity EActor)
     forM_ ress (addEntity EResource)
@@ -75,10 +75,8 @@ addEntity klass a = do
         else put typeInfo {entities = M.insert (entityName a) (klass, actorColumnsMap) (entities typeInfo)}
 
 mkGlobals :: ColumnTypeProvider a => a -> AST -> TypeGen ()
-mkGlobals provider ast = do
-    typedActors <- forM (astActors ast) (lift . fillTypes provider)
-    typedResources <- forM (astResources ast) (lift . fillTypes provider)
-    mkTypeInfo typedActors typedResources
+mkGlobals _provider ast = do
+    mkTypeInfo (astActors ast) (astResources ast)
     forM_ (astAssociations ast) $ \assoc ->
         case assocHeader assoc of
             AHDef (Definition name args) -> addFunction name args
