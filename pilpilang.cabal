@@ -29,6 +29,7 @@ common deps
         , base >=4.14
         , parser-combinators
         , mtl
+        , postgresql-simple
     ghc-options:   -Wall
                    -Wcompat
                    -Widentities
