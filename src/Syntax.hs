@@ -243,7 +243,7 @@ pPredCall = do
 
 data Value
     = VVar Text -- name of variable
-    | VVarField Text Text -- object variable and field
+    | VVarField Value Text -- object variable and field
     -- literals
     | VLitInt Int
     | VLitBool Bool
@@ -256,12 +256,18 @@ pValue = lexeme $ choice
     , VLitString <$> pQuotedLiteral True
     , VLitBool True <$ string "true"
     , VLitBool False <$ string "false"
-    , try pVarField
     , VVar <$> pLowerCasedWord
-    ]
-        where 
-            pVarField = do
-                var <- pLowerCasedWord
-                char '.'
-                field <- pLowerCasedWord
-                return (VVarField var field)
+    ] >>= pValueField
+
+pValueField :: Value -> Parser Value
+pValueField val = do
+    field <- optional $ do
+        char '.'
+        pLowerCasedWord
+    case field of
+        Nothing -> return val
+        Just fieldName -> pValueField $ VVarField val fieldName
+
+
+-- esperado: (VVF (VVF (VV abc) def) ghi)
+-- abc.def.ghi

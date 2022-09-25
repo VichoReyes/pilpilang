@@ -56,7 +56,7 @@ spec = do
                             permissionResource = TypedVar {typedVarName = "resource", typedVarType = "Doc"}
                             }
                         ),
-                    assocDefinition = PEquals (VLitInt 7) (VVarField "actor" "age")}
+                    assocDefinition = PEquals (VLitInt 7) (VVarField (VVar "actor") "age")}
         it "handles AND predicates (&&)" $
             parse pAssoc "" "can_write(actor: T, resource: Doc) if hola(asdfasd) && \"cinco\" = 5" `parseSatisfies`
                 (\assoc -> case assocDefinition assoc of
@@ -71,3 +71,17 @@ spec = do
     describe "pAST" $
         it "parses the twitter example" $
             TIO.readFile "test/examples/twitter.pilpil" >>= (parse pAST "" `shouldSucceedOn`)
+    
+    describe "pValue" $ do
+        it "works on primitives" $ do
+            parse pValue "" "true" `shouldParse` VLitBool True
+            parse pValue "" "5" `shouldParse` VLitInt 5
+            parse pValue "" "\"hola que tal\"" `shouldParse` VLitString "hola que tal"
+        it "works on variables" $
+            parse pValue "" "asdf" `shouldParse` VVar "asdf"
+        it "works on fields" $ do
+            parse pValue "" "asd.fgh" `shouldParse` VVarField (VVar "asd") "fgh"
+            parse pValue "" "5.fgh" `shouldParse` VVarField (VLitInt 5) "fgh"
+        it "works on nested fields" $
+            parse pValue "" "5.fgh.qwer.crc" `shouldParse` VVarField (VVarField (VVarField (VLitInt 5) "fgh") "qwer") "crc"
+

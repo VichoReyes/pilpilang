@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
 module Types where
 
 import Syntax
@@ -9,6 +10,7 @@ import Control.Monad.State (StateT, MonadState (put, get), MonadTrans (lift), ex
 import Control.Monad (forM_, forM, when)
 import Control.Monad.Reader (ReaderT (runReaderT), MonadReader (local, ask))
 import qualified Data.Text as T
+import Data.String (IsString)
 
 class ColumnTypeProvider a where
     fillTypes :: a -> GEntity klass Text -> Either TypeError (GEntity klass (Text, Text))
@@ -17,7 +19,7 @@ data TypedAssoc -- TODO
 
 newtype TypeError = TypeError
     { getTypeError :: Text
-    } deriving (Eq, Ord, Show)
+    } deriving (Eq, Ord, Show, Semigroup, Monoid, IsString)
 
 type Type = Text
 
@@ -158,12 +160,13 @@ cValue (VLitInt _) = return "Int"
 cValue (VLitBool _) = return "Bool"
 cValue (VLitString _) = return "String"
 cValue (VVar varName) = cLookUp (M.lookup varName . variables) (varName<>" not found")
-cValue (VVarField varName varField) = cLookUp lookUpField (varName<>"."<>varField<>" not found")
-    where
-        lookUpField typeInfo = do
-            varType <- M.lookup varName (variables typeInfo)
-            fields <- M.lookup varType (entities typeInfo)
-            M.lookup varField (snd fields)
+cValue (VVarField varName varField) = do
+    varType <- cValue varName
+    typeInfo <- ask
+    fields <- lift $ maybe (Left (TypeError varType<>" not found")) Right $
+        M.lookup varType (entities typeInfo)
+    lift $ maybe (Left (TypeError varType<>" has no field "<>TypeError varField)) Right $
+        M.lookup varField (snd fields)
 
 addFunction :: Text -> [TypedVar] -> TypeGen ()
 addFunction name args = do

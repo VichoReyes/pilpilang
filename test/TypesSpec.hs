@@ -83,21 +83,21 @@ spec = do
             runReaderT (cValue (VLitInt 4)) undefined
                 `shouldBe` Right "Int"
         it "works on var fields" $ do
-            runReaderT (cValue (VVarField "andy" "age")) sampleEnv
+            runReaderT (cValue (VVarField (VVar "andy") "age")) sampleEnv
                 `shouldBe` Right "Int"
-            runReaderT (cValue (VVarField "andy" "name")) sampleEnv
+            runReaderT (cValue (VVarField (VVar "andy") "name")) sampleEnv
                 `shouldBe` Right "String"
     describe "cPredicate" $ do
         it "works on predicates" $ do
             runReaderT (cPredicate (PredCall "older_than" [VVar "andy", VLitInt 18])) sampleEnv
                 `shouldBe` Right ()
-            runReaderT (cPredicate (PredCall "older_than" [VVarField "andy" "name", VLitInt 18])) sampleEnv
+            runReaderT (cPredicate (PredCall "older_than" [VVarField (VVar "andy") "name", VLitInt 18])) sampleEnv
                 `shouldSatisfy` isLeft
         it "val1 = val2: works on correct types" $
-            runReaderT (cPredicate (PEquals (VVarField "andy" "age") (VLitInt 18))) sampleEnv
+            runReaderT (cPredicate (PEquals (VVarField (VVar "andy") "age") (VLitInt 18))) sampleEnv
                 `shouldSatisfy` isRight
         it "val1 = val2: fails on mismatched types" $
-            runReaderT (cPredicate (PEquals (VVarField "andy" "name") (VLitInt 18))) sampleEnv
+            runReaderT (cPredicate (PEquals (VVarField (VVar "andy") "name") (VLitInt 18))) sampleEnv
                 `shouldSatisfy` isLeft
         it "val1 = val2: fails on matched but non-primitive types" $
             runReaderT (cPredicate (PEquals (VVar "andy") (VVar "andy"))) sampleEnv
