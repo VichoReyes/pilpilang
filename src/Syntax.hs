@@ -170,13 +170,14 @@ pPermission = lexeme $ do
     symbol ")"
     return Permission {..}
 
-data PermissionType = PCanRead | PCanWrite | PCanDelete
+data PermissionType = PCanSelect | PCanInsert | PCanUpdate | PCanDelete
     deriving (Eq, Show, Ord)
 
 pPermissionType :: Parser PermissionType
 pPermissionType = lexeme $ choice
-    [ PCanRead <$ pKeyword "can_read"
-    , PCanWrite <$ pKeyword "can_write"
+    [ PCanSelect <$ pKeyword "can_select"
+    , PCanInsert <$ pKeyword "can_insert"
+    , PCanUpdate <$ pKeyword "can_update"
     , PCanDelete <$ pKeyword "can_delete"
     ]
 
