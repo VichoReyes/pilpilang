@@ -24,10 +24,10 @@ resource Chat {
 
 can_insert(u:User, m:Message) if
     is_not_drunk(u)
-    and chat_contains(m.chat, u)
+    && chat_contains(m.chat, u)
 
 is_not_drunk(u: User) if u.alcohol_ppm < 5
 
 #chat_contains(c: Chat, u: User) if u in c.users_set
-chat_contains(c: Chat, u: User) if always
+chat_contains(c: Chat, u: User) if u = c.users_set
 
