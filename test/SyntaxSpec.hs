@@ -47,11 +47,11 @@ spec = do
 
     describe "pAssoc" $ do
         it "works" $
-            parse pAssoc "" "can_write(actor: Actor, resource: Doc) if 7 = actor.age" `shouldParse`
+            parse pAssoc "" "can_select(actor: Actor, resource: Doc) if 7 = actor.age" `shouldParse`
                 Assoc {
                     assocHeader = AHPermission (
                         Permission {
-                            permissionType = PCanWrite,
+                            permissionType = PCanSelect,
                             permissionActor = TypedVar {typedVarName = "actor", typedVarType = "Actor"},
                             permissionResource = TypedVar {typedVarName = "resource", typedVarType = "Doc"}
                             }
