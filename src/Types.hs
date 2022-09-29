@@ -223,8 +223,8 @@ cPredicate (PredCall predName args) = do
             (cTypeError $ "in call to "<>predName<>": expected "<>tShow ex<>", found "<>tShow act)
     return . PredCall predName $ zipWith ValidVal args actualTypes
 cPredicate PAlways = return PAlways
-cPredicate (PAnd p1 p2) = cPredicate p1 >> cPredicate p2
-cPredicate (POr p1 p2) = cPredicate p1 >> cPredicate p2
+cPredicate (PAnd p1 p2) = PAnd <$> cPredicate p1 <*> cPredicate p2
+cPredicate (POr p1 p2) = POr <$> cPredicate p1 <*> cPredicate p2
 cPredicate (PEquals val1 val2) = do
     type1 <- cValue val1
     type2 <- cValue val2
@@ -244,9 +244,9 @@ cPredicate (PGreaterT val1 val2) = do
     type2 <- cValue val2
     when (type2 /= TInt) $
         cTypeError (tShow type2<>"doesn't support order comparison")
-    return $ PEquals (ValidVal val1 type1) (ValidVal val2 type2)
+    return $ PGreaterT (ValidVal val1 type1) (ValidVal val2 type2)
 -- reuse the last one
-cPredicate (PLessT val1 val2) = cPredicate (PGreaterT val1 val2)
+cPredicate (PLessT val1 val2) = cPredicate (PGreaterT val2 val1)
 
 cValue :: Value -> TypeCheck ValidType
 cValue (VLitInt _) = return TInt
