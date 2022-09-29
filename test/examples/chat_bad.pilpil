@@ -29,4 +29,4 @@ can_insert(u:User, m:Message) if
 is_not_drunk(u: User) if u.alcohol_ppm < 5
 
 #chat_contains(c: Chat, u: User) if u in c.users_set
-chat_contains(c: Chat, u: User) if u.id = c.users_set.id
+chat_contains(c: Chat, u: User) if u = c.users_set

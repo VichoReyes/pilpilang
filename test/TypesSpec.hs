@@ -109,12 +109,16 @@ spec = do
             runReaderT (cPredicate (PEquals (VVar "andy") (VVar "andy"))) sampleEnv
                 `shouldSatisfy` isLeft
     describe "runTypeChecker" $ do
-        it "works on chat.pilpil" $ do
-            chatExample <- TIO.readFile "test/examples/chat.pilpil"
-            let ast = fromRight undefined $ parse pAST "chat.pilpil" chatExample
-            runTypeChecker MockDB ast `shouldSatisfy` isRight
         it "works on twitter.pilpil" $ do
             twitterExample <- TIO.readFile "test/examples/twitter.pilpil"
             let ast = fromRight undefined $ parse pAST "twitter.pilpil" twitterExample
             runTypeChecker MockDB ast `shouldSatisfy` isRight
+        it "works on chat.pilpil" $ do
+            chatExample <- TIO.readFile "test/examples/chat.pilpil"
+            let ast = fromRight undefined $ parse pAST "chat.pilpil" chatExample
+            runTypeChecker MockDB ast `shouldSatisfy` isRight
+        it "fails on chat_bad.pilpil" $ do
+            chatExample <- TIO.readFile "test/examples/chat_bad.pilpil"
+            let ast = fromRight undefined $ parse pAST "chat_bad.pilpil" chatExample
+            runTypeChecker MockDB ast `shouldSatisfy` isLeft
 

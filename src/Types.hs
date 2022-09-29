@@ -102,9 +102,34 @@ runTypeChecker provider ast = do
 
 materialize :: PartialInfo -> AST -> Either TypeError TypeInfo
 materialize (PartialInfo ents funcs) ast = do
-    ents' <- mapM genEnt ents
-    funcs' <- undefined
-    return mempty {entities = ents', functions = funcs'}
+    let entNames = M.keys ents
+    ents' <- mapM (genEnt ast) entNames
+    let entPairs = zip entNames ents'
+    funcs' <- traverse (mapM $ lookupType entPairs) funcs
+    return mempty {entities = M.fromList entPairs, functions = funcs'}
+        where
+            lookupType entPairs typeName = case lookup typeName entPairs of
+                Nothing -> Left . TypeError $ typeName<>" not found"
+                Just b -> Right b
+
+genEnt :: AST -> Text -> Either TypeError ValidType
+genEnt _ "Int" = return TInt
+genEnt _ "String" = return TString
+genEnt _ "Bool" = return TBool
+genEnt ast entName = do
+    let entList = filter (\a -> entityName a == entName) $ astActors ast
+    case entList of
+        [] -> do
+            case filter (\a -> entityName a == entName) $ astResources ast of
+              [] -> Left . TypeError $ entName<>" not found"
+              [ent] -> do
+                    cols <- mapM (genEnt ast . snd) (entityColumns ent)
+                    return $ TResource ent {entityColumns = zip (map fst $ entityColumns ent) cols}
+              _ -> error "More than one definition? Shouldn't happen"
+        [ent] -> do
+            cols <- mapM (genEnt ast . snd) (entityColumns ent)
+            return $ TActor ent {entityColumns = zip (map fst $ entityColumns ent) cols}
+        _ -> error "More than one definition? Shouldn't happen"
 
 -- TODO check for repeats
 mkColumnMap :: GEntity klass (Text, Text) -> TypeGen (Map Text Type)
@@ -168,7 +193,7 @@ mkLocalVars (AHPermission (Permission _ actorVar resourceVar)) = do
         cTypeError "when defining a permission, first argument should be an Actor"
     resourceType' <- cLookUp (M.lookup resourceType . entities) ("Resource "<>resourceType<>" not defined")
     when (resourceType' /= TResource (resource resourceType undefined undefined)) $
-        cTypeError "when defining a permission, second argument should be an Resource"
+        cTypeError $ tShow resourceType'<>": when defining a permission, second argument should be a Resource"
     return mempty {variables = M.fromList [(actorName, actorType'), (resourceName, resourceType')]}
 
 getValType :: Type -> TypeCheck ValidType
