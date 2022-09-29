@@ -8,6 +8,7 @@ import System.Environment (getArgs)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Types (runTypeChecker, TypeError (TypeError), ColumnTypeProvider)
+import Control.Monad (forM_)
 
 data DBThing = DBThing
 
@@ -26,6 +27,8 @@ main = do
             parseTest (pAST <* eof) contents
             let Right ast = parse (pAST <* eof) "" contents
             case runTypeChecker DBThing ast of
-                Right _ -> putStrLn "type checked correctly"
+                Right (_, preds) -> do
+                    putStrLn "type checked correctly:"
+                    forM_ preds print
                 Left (TypeError t) -> TIO.putStrLn t
         _ -> putStr "invalid"

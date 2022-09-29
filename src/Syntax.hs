@@ -137,7 +137,7 @@ pQuotedLiteral allowEmpty = lexeme $ do
 
 data Assoc = Assoc
     { assocHeader :: AssocHeader
-    , assocDefinition :: Predicate
+    , assocDefinition :: Predicate Value
     } deriving (Eq, Show, Ord)
 
 pAssoc :: Parser Assoc
@@ -206,17 +206,17 @@ pDefinition = lexeme $ do
     symbol ")"
     return Definition {..}
 
-data Predicate
-    = PredCall Text [Value]
+data Predicate a
+    = PredCall Text [a]
     | PAlways
-    | PAnd Predicate Predicate
-    | POr Predicate Predicate
-    | PEquals Value Value
-    | PGreaterT Value Value
-    | PLessT Value Value
+    | PAnd (Predicate a) (Predicate a)
+    | POr (Predicate a) (Predicate a)
+    | PEquals a a
+    | PGreaterT a a
+    | PLessT a a
     deriving (Eq, Show, Ord)
 
-pPredicate :: Parser Predicate
+pPredicate :: Parser (Predicate Value)
 pPredicate = makeExprParser pTerm operatorTable
     where
         pTerm = choice
@@ -233,7 +233,7 @@ pPredicate = makeExprParser pTerm operatorTable
             , InfixR (POr <$ symbol "||")
             ]]
 
-pPredCall :: Parser Predicate
+pPredCall :: Parser (Predicate Value)
 pPredCall = do
     name <- pLowerCasedWord
     symbol "("

@@ -18,18 +18,19 @@ tShow = T.pack . show
 class ColumnTypeProvider a where
     fillTypes :: a -> GEntity klass Text -> Either TypeError (GEntity klass (Text, Text))
 
-data TypedAssoc -- TODO
-
 newtype TypeError = TypeError
     { getTypeError :: Text
     } deriving (Eq, Ord, Show, Semigroup, Monoid, IsString)
 
 type Type = Text
 
-data ValidVar = ValidVar
-    { vvName :: Text
+data ValidVal = ValidVal
+    { vvContents :: Value
     , vvType :: ValidType
-    } deriving (Eq, Show)
+    } deriving (Eq)
+
+instance Show ValidVal where
+    show (ValidVal c t) = "("<>show c<>": "<>show t<>")"
 
 data ValidType
     = TInt
@@ -94,11 +95,12 @@ type TypeGen a = StateT PartialInfo (Either TypeError) a
 
 type TypeCheck a = ReaderT TypeInfo (Either TypeError) a
 
-runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError ()
+runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError (TypeInfo, [Predicate ValidVal])
 runTypeChecker provider ast = do
     partialGlobals <- execStateT (mkGlobals provider ast) mempty
     globals <- materialize partialGlobals ast
-    runReaderT (cAssocs (astAssociations ast)) globals
+    preds <- runReaderT (cAssocs (astAssociations ast)) globals
+    return (globals, preds)
 
 materialize :: PartialInfo -> AST -> Either TypeError TypeInfo
 materialize (PartialInfo ents funcs) ast = do
@@ -171,9 +173,9 @@ cLookUp f err = do
         Nothing -> cTypeError err
         Just a -> return a
 
-cAssocs :: [Assoc] -> TypeCheck ()
+cAssocs :: [Assoc] -> TypeCheck [Predicate ValidVal]
 cAssocs associations = do
-    forM_ associations $ \assoc -> do
+    forM associations $ \assoc -> do
         let predicate = assocDefinition assoc
         localVars <- mkLocalVars (assocHeader assoc)
         local (localVars<>) (cPredicate predicate)
@@ -209,7 +211,7 @@ getValType typeName = do
 var2pair :: TypedVar -> (Text, Type)
 var2pair var = (typedVarName var, typedVarType var)
 
-cPredicate :: Predicate -> TypeCheck ()
+cPredicate :: Predicate Value -> TypeCheck (Predicate ValidVal)
 cPredicate (PredCall predName args) = do
     expectedTypes <- cLookUp (M.lookup predName . functions) $
         (predName<>" not defined")
@@ -219,7 +221,8 @@ cPredicate (PredCall predName args) = do
     forM_ (zip expectedTypes actualTypes) $ \(ex, act) ->
         when (ex /= act)
             (cTypeError $ "in call to "<>predName<>": expected "<>tShow ex<>", found "<>tShow act)
-cPredicate PAlways = return ()
+    return . PredCall predName $ zipWith ValidVal args actualTypes
+cPredicate PAlways = return PAlways
 cPredicate (PAnd p1 p2) = cPredicate p1 >> cPredicate p2
 cPredicate (POr p1 p2) = cPredicate p1 >> cPredicate p2
 cPredicate (PEquals val1 val2) = do
@@ -233,6 +236,7 @@ cPredicate (PEquals val1 val2) = do
             ": first is "<>tShow type1<>" and second is "<>tShow type2)
     when (type1 `notElem` [TString, TInt, TBool]) $
         cTypeError ("cannot compare "<>tShow type1<>"s, can only compare Strings, Ints and Bools")
+    return $ PEquals (ValidVal val1 type1) (ValidVal val2 type2)
 cPredicate (PGreaterT val1 val2) = do
     type1 <- cValue val1
     when (type1 /= TInt) $
@@ -240,6 +244,7 @@ cPredicate (PGreaterT val1 val2) = do
     type2 <- cValue val2
     when (type2 /= TInt) $
         cTypeError (tShow type2<>"doesn't support order comparison")
+    return $ PEquals (ValidVal val1 type1) (ValidVal val2 type2)
 -- reuse the last one
 cPredicate (PLessT val1 val2) = cPredicate (PGreaterT val1 val2)
 

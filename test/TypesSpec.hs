@@ -96,7 +96,7 @@ spec = do
     describe "cPredicate" $ do
         it "works on predicates" $ do
             runReaderT (cPredicate (PredCall "older_than" [VVar "andy", VLitInt 18])) sampleEnv
-                `shouldBe` Right ()
+                `shouldSatisfy` isRight
             runReaderT (cPredicate (PredCall "older_than" [VVarField (VVar "andy") "name", VLitInt 18])) sampleEnv
                 `shouldSatisfy` isLeft
         it "val1 = val2: works on correct types" $
