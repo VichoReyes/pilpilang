@@ -105,9 +105,10 @@ spec = do
         it "val1 = val2: fails on mismatched types" $
             runReaderT (cPredicate (PEquals (VVarField (VVar "andy") "name") (VLitInt 18))) sampleEnv
                 `shouldSatisfy` isLeft
-        it "val1 = val2: fails on matched but non-primitive types" $
-            runReaderT (cPredicate (PEquals (VVar "andy") (VVar "andy"))) sampleEnv
-                `shouldSatisfy` isLeft
+        -- Equality on user_defined types is just equality of IDs.
+        -- it "val1 = val2: fails on matched but non-primitive types" $
+        --     runReaderT (cPredicate (PEquals (VVar "andy") (VVar "andy"))) sampleEnv
+        --         `shouldSatisfy` isLeft
     describe "runTypeChecker" $ do
         it "works on twitter.pilpil" $ do
             twitterExample <- TIO.readFile "test/examples/twitter.pilpil"

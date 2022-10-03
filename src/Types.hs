@@ -234,8 +234,6 @@ cPredicate (PEquals val1 val2) = do
         let val2' = T.pack (show val2)
         cTypeError ("mismatched types in "<>val1'<>" = "<>val2'<>
             ": first is "<>tShow type1<>" and second is "<>tShow type2)
-    when (type1 `notElem` [TString, TInt, TBool]) $
-        cTypeError ("cannot compare "<>tShow type1<>"s, can only compare Strings, Ints and Bools")
     return $ PEquals (ValidVal val1 type1) (ValidVal val2 type2)
 cPredicate (PGreaterT val1 val2) = do
     type1 <- cValue val1

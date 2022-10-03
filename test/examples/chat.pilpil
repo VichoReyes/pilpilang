@@ -18,7 +18,8 @@ resource Chat {
     table "chat"
     columns [
         id: Int,
-        users_set: User # [Users] m2m via "table"
+        user1: User,
+        user2: User,
     ]
 }
 
@@ -28,5 +29,4 @@ can_insert(u:User, m:Message) if
 
 is_not_drunk(u: User) if u.alcohol_ppm < 5
 
-#chat_contains(c: Chat, u: User) if u in c.users_set
-chat_contains(c: Chat, u: User) if u.id = c.users_set.id
+chat_contains(c: Chat, u: User) if u = c.user1 || u = c.user2
