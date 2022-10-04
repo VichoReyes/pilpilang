@@ -14,6 +14,7 @@ import qualified Data.Map as M
 import Text.Megaparsec (parse)
 import Data.Either (fromRight, isLeft, isRight)
 import Control.Monad.Reader (ReaderT(runReaderT))
+import Data.List.NonEmpty (NonEmpty((:|)))
 
 data MockDB = MockDB
 
@@ -59,6 +60,11 @@ sampleEnv = TypeInfo { entities = M.fromList
     , variables = M.fromList [("andy", TResource (resource "User" undefined [("id", TInt), ("name", TString), ("age", TInt)]))]
 }
 
+typeIs :: ValidType -> Either a1 (NonEmpty ValidType) -> Bool
+typeIs valType a = case a of
+    Left _ -> False
+    Right (t :| _) -> t == valType
+
 spec :: Spec
 spec = do
     describe "mkTypeInfo" $ do
@@ -83,16 +89,16 @@ spec = do
                 `shouldBe` Left (TypeError "andy.favorites not found")
         it "works on literals, ignoring env" $ do
             runReaderT (cValue (VLitBool True)) undefined
-                `shouldBe` Right TBool
+                `shouldSatisfy` typeIs TBool
             runReaderT (cValue (VLitString "Something")) undefined
-                `shouldBe` Right TString
+                `shouldSatisfy` typeIs TString
             runReaderT (cValue (VLitInt 4)) undefined
-                `shouldBe` Right TInt
+                `shouldSatisfy` typeIs TInt
         it "works on var fields" $ do
             runReaderT (cValue (VVarField (VVar "andy") "age")) sampleEnv
-                `shouldBe` Right TInt
+                `shouldSatisfy` typeIs TInt
             runReaderT (cValue (VVarField (VVar "andy") "name")) sampleEnv
-                `shouldBe` Right TString
+                `shouldSatisfy` typeIs TString
     describe "cPredicate" $ do
         it "works on predicates" $ do
             runReaderT (cPredicate (PredCall "older_than" [VVar "andy", VLitInt 18])) sampleEnv
