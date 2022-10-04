@@ -11,6 +11,8 @@ import Control.Monad (forM_, forM, when)
 import Control.Monad.Reader (ReaderT (runReaderT), MonadReader (local, ask))
 import qualified Data.Text as T
 import Data.String (IsString)
+import qualified Data.List.NonEmpty as NE
+import Data.List.NonEmpty ((<|))
 
 tShow :: Show a => a -> Text
 tShow = T.pack . show
@@ -26,7 +28,7 @@ type Type = Text
 
 data ValidVal = ValidVal
     { vvContents :: Value
-    , vvType :: ValidType
+    , vvType :: NE.NonEmpty ValidType
     } deriving (Eq)
 
 instance Show ValidVal where
@@ -219,7 +221,7 @@ cPredicate (PredCall predName args) = do
     when (length expectedTypes /= length actualTypes) $
         cTypeError (predName<>" call with wrong number of arguments")
     forM_ (zip expectedTypes actualTypes) $ \(ex, act) ->
-        when (ex /= act)
+        when (ex /= NE.head act)
             (cTypeError $ "in call to "<>predName<>": expected "<>tShow ex<>", found "<>tShow act)
     return . PredCall predName $ zipWith ValidVal args actualTypes
 cPredicate PAlways = return PAlways
@@ -228,33 +230,33 @@ cPredicate (POr p1 p2) = POr <$> cPredicate p1 <*> cPredicate p2
 cPredicate (PEquals val1 val2) = do
     type1 <- cValue val1
     type2 <- cValue val2
-    when (type1 /= type2) $ do
+    when (NE.head type1 /= NE.head type2) $ do
         -- TODO improve representation
-        let val1' = T.pack (show val1)
-        let val2' = T.pack (show val2)
+        let val1' = tShow val1
+        let val2' = tShow val2
         cTypeError ("mismatched types in "<>val1'<>" = "<>val2'<>
-            ": first is "<>tShow type1<>" and second is "<>tShow type2)
+            ": first is "<>tShow (NE.head type1)<>" and second is "<>tShow (NE.head type2))
     return $ PEquals (ValidVal val1 type1) (ValidVal val2 type2)
 cPredicate (PGreaterT val1 val2) = do
     type1 <- cValue val1
-    when (type1 /= TInt) $
+    when (NE.head type1 /= TInt) $
         cTypeError (tShow type1<>"doesn't support order comparison")
     type2 <- cValue val2
-    when (type2 /= TInt) $
+    when (NE.head type2 /= TInt) $
         cTypeError (tShow type2<>"doesn't support order comparison")
     return $ PGreaterT (ValidVal val1 type1) (ValidVal val2 type2)
 -- reuse the last one
 cPredicate (PLessT val1 val2) = cPredicate (PGreaterT val2 val1)
 
-cValue :: Value -> TypeCheck ValidType
-cValue (VLitInt _) = return TInt
-cValue (VLitBool _) = return TBool
-cValue (VLitString _) = return TString
-cValue (VVar varName) = cLookUp (M.lookup varName . variables) (varName<>" not found")
+cValue :: Value -> TypeCheck (NE.NonEmpty ValidType)
+cValue (VLitInt _) = pure . pure $ TInt
+cValue (VLitBool _) = pure . pure $ TBool
+cValue (VLitString _) = pure . pure $ TString
+cValue (VVar varName) = pure <$> cLookUp (M.lookup varName . variables) (varName<>" not found")
 cValue (VVarField varName varField) = do
     varType <- cValue varName
-    lift $ maybe (Left (TypeError (tShow varType<>" has no field "<>varField))) Right $
-        propertyLookup varField varType
+    lift $ maybe (Left (TypeError (tShow varType<>" has no field "<>varField))) (Right . (<|varType)) $
+        propertyLookup varField (NE.head varType)
 
 propertyLookup :: Text -> ValidType -> Maybe ValidType
 propertyLookup k (TActor (Entity _ _ cols)) = lookup k cols
