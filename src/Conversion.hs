@@ -3,68 +3,106 @@
 module Conversion where
 
 import Syntax
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromJust)
 import Data.Text (Text)
 import Control.Monad.Reader (Reader)
-import Data.Foldable (fold)
 import Control.Monad.RWS (asks)
 import qualified Data.Text as T
-import Types (TypeInfo (entities), ValidType (..), ValidVal, tShow)
+import Types (TypeInfo (entities), ValidType (..), ValidVal (ValidVal, vvContents), tShow)
 import Data.Map ((!))
+import Data.List.NonEmpty (NonEmpty(..))
+import Data.Foldable (find)
+import Control.Applicative ((<|>))
 
 data ConverterInfo = ConverterInfo
     { ciAST :: AST
     , ciTypeInfo :: TypeInfo
-    , ciScope :: [(Text, (Char, Int))]
+    , ciValidPredicates :: [Predicate ValidVal]
     } deriving (Eq, Show)
 
 type Conversor = Reader ConverterInfo
 
-asdf :: Conversor Text
-asdf = do
+renderAST :: Conversor Text
+renderAST = do
     ast <- asks ciAST
     let permissions = mapMaybe fromPermission $ astAssociations ast
-    fold <$> traverse qwer permissions
+    T.intercalate "\n" <$> traverse renderPermission permissions
 
-qwer :: (Permission, Predicate ValidVal) -> Conversor Text
-qwer (Permission perm act res, pred) = do
+renderPermission :: (Permission, Predicate ValidVal) -> Conversor Text
+renderPermission (Permission perm act res, pred) = do
     -- let resType = asks fst
     actType <- asks ((!typedVarType act) . entities . ciTypeInfo)
     let TActor actEntity = actType
     resType <- asks ((!typedVarType res) . entities . ciTypeInfo)
     let TResource resEntity = resType
-    (tables, allConditions) <- renderPred pred
-    let allTables = T.intercalate ", " $ map renderTable tables
-    return $ "CREATE POLICY todo_name ON "<>entityTable resEntity<>" t1 FOR "
-        <>ptype2sql perm<>" (EXISTS (SELECT * FROM "<>allTables<>" WHERE "<>allConditions
+    let context = [(resVal resEntity, entityTable resEntity), (actVal actEntity, entityTable actEntity)]
+    sqlPred <- renderPred context pred
+    return $ renderPermType perm actEntity resEntity sqlPred
+        where resVal ent = ValidVal (VVar $ typedVarName res) (TResource ent :| [])
+              actVal ent = ValidVal (VVar $ typedVarName act) (TActor ent :| [])
 
-renderPred :: Predicate ValidVal -> Conversor ([(Text, (Char, Int))], Text)
-renderPred (PredCall predName vals) = undefined
-renderPred (PAnd p1 p2) = do
-    (tables1, conditions1) <- renderPred p1
-    (tables2, conditions2) <- renderPred p2
-    return (tables1 ++ tables2, "("<>conditions1<>" AND "<>conditions2<>")")
-renderPred (POr p1 p2) = do
-    (tables1, conditions1) <- renderPred p1
-    (tables2, conditions2) <- renderPred p2
-    return (tables1 ++ tables2, "("<>conditions1<>" OR "<>conditions2<>")")
-renderPred PAlways = return ([], "true")
-renderPred (PEquals v1 v2) = undefined
-renderPred (PGreaterT v1 v2) = undefined
-renderPred (PLessT v1 v2) = undefined
+renderPermType :: PermissionType -- ^ select, insert, update, etc
+  -> GEntity ActorMarker (Text, ValidType) -- ^ actor entity, with typed columns 
+  -> GEntity ResourceMarker (Text, ValidType) -- ^ resource entity, same
+  -> Text -- ^ the predicate, already translated to SQL
+  -> Text -- final policy
+renderPermType pType act res sqlPred =
+    "CREATE POLICY todo_name ON " <> res' <> " FOR " <> operation
+        <> " " <> conditionOpener <> " (" <> actID act <> " IN ("
+        <> sqlPred <> "));"
+            where
+                res' = entityTable res
+                operation = case pType of
+                  PCanSelect -> "SELECT"
+                  PCanInsert -> "INSERT"
+                  PCanUpdate -> "UPDATE"
+                  PCanDelete -> "DELETE"
+                conditionOpener = case pType of
+                    PCanInsert -> "WITH CHECK"
+                    _ -> "USING"
+                actID _ = "current_user"
 
-renderTable :: (Text, (Char, Int)) -> Text
-renderTable (table, (initial, num)) = tShow table<>" "<>tShow initial<>tShow num
+renderPred:: [(ValidVal, Text)] -> Predicate ValidVal -> Conversor Text
+renderPred scope pred = do
+    case pred of
+        PAlways -> return "(1)"
+        PAnd p1 p2 -> (\s1 s2 -> s1<>" AND "<>s2) <$> renderPred scope p1 <*> renderPred scope p2
+        POr p1 p2 -> (\s1 s2 -> s1<>" OR "<>s2) <$> renderPred scope p1 <*> renderPred scope p2
+        PEquals v1 v2 -> return $ renderCmp "=" v1 v2
+        PGreaterT v1 v2 -> return $ renderCmp ">" v1 v2
+        PLessT v1 v2 -> return $ renderCmp "<" v1 v2
+        PredCall txt vvs -> do
+            let start = "ROW("<>T.intercalate "," (map renderVal vvs)<>") IN ("
+            assocs <- asks (astAssociations . ciAST)
+            let newAssoc = fromJust $ find (findDef txt . assocHeader) assocs
+            asdf <- renderAssoc newAssoc
+            return $ start<>asdf<>")"
 
-ptype2sql :: PermissionType -> Text
-ptype2sql PCanDelete = "DELETE USING"
-ptype2sql PCanInsert = "INSERT WITH CHECK"
-ptype2sql PCanSelect = "SELECT USING"
-ptype2sql PCanUpdate = "UPDATE USING" -- TODO add with check in this case too
+        where
+            renderCmp cmp v1 v2 = do
+                let s1 = renderVal v1
+                    s2 = renderVal v2
+                 in s1 <> cmp <> s2
+            renderVal val = fromJust $ lookup val scope <|> renderLit val
 
+renderAssoc :: Assoc -> Conversor Text
+renderAssoc Assoc {assocHeader=ah, assocDefinition=p} = do
+    (joinTables, conditions, scope) <- createScope assoc
+    renderPred scope p
+
+renderLit :: ValidVal -> Maybe Text
+renderLit ValidVal {vvContents = VLitBool b} = Just $ tShow b
+renderLit ValidVal {vvContents = VLitString b} = Just $ "'"<>b<>"'" -- TODO escape
+renderLit ValidVal {vvContents = VLitInt b} = Just $ tShow b
+renderLit _ = Nothing
+
+findDef :: Text -> AssocHeader -> Bool
+findDef txt header = case header of
+  AHDef Definition {defName=name} -> name == txt
+  _ -> False
 
 fromPermission :: Assoc -> Maybe (Permission, Predicate ValidVal)
 fromPermission assoc = case assocHeader assoc of
-    AHPermission per -> undefined per -- Just (per, assocDefinition assoc)
+    AHPermission per -> Just (per, undefined assocDefinition assoc)
     AHDef _ -> Nothing
 
