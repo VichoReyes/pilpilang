@@ -9,6 +9,8 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Types (runTypeChecker, TypeError (TypeError), ColumnTypeProvider)
 import Control.Monad (forM_)
+import qualified Data.Map as M
+-- import Conversion
 
 data DBThing = DBThing
 
@@ -29,6 +31,7 @@ main = do
             case runTypeChecker DBThing ast of
                 Right (_, preds) -> do
                     putStrLn "type checked correctly:"
-                    forM_ preds print
+                    let preds' = M.toList preds
+                    forM_ preds' print
                 Left (TypeError t) -> TIO.putStrLn t
         _ -> putStr "invalid"
