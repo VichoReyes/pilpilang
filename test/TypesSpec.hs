@@ -1,4 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant compare" #-}
+{-# HLINT ignore "Use >" #-}
+{-# HLINT ignore "Use <" #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module TypesSpec where
 
@@ -15,6 +20,8 @@ import Text.Megaparsec (parse)
 import Data.Either (fromRight, isLeft, isRight)
 import Control.Monad.Reader (ReaderT(runReaderT))
 import Data.List.NonEmpty (NonEmpty((:|)))
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck ((==>), Arbitrary (arbitrary), elements, oneof, frequency)
 
 data MockDB = MockDB
 
@@ -128,4 +135,19 @@ spec = do
             chatExample <- TIO.readFile "test/examples/chat_bad.pilpil"
             let ast = fromRight undefined $ parse pAST "chat_bad.pilpil" chatExample
             runTypeChecker MockDB ast `shouldSatisfy` isLeft
+    describe "ValidType Ord instance" $ do
+        prop "compare x y == EQ iff x == y" $
+            \x y -> compare (x :: ValidType) y == EQ `shouldBe` x == y
+        prop "compare x y == LT iff compare y x == GT" $
+            \x y -> compare (x :: ValidType) y == LT `shouldBe` compare y x == GT
+        prop "x < y && y < z ==> x < z" $
+            \x y z -> (x :: ValidType) < y && y < z ==> x < z `shouldBe` True
 
+instance Arbitrary ValidType where
+    arbitrary = frequency [
+        (1, return TInt),
+        (1, return TBool),
+        (1, return TString),
+        (3, actor'' . T.pack <$> arbitrary),
+        (3, resource'' . T.pack <$> arbitrary)
+        ]
