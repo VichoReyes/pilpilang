@@ -49,6 +49,22 @@ instance Eq ValidType where
     TResource ent1 == TResource ent2 = entityName ent1 == entityName ent2
     _ == _ = False
 
+instance Ord ValidType where
+    compare TInt TInt = EQ
+    compare TInt _ = LT
+    compare TBool TInt = GT
+    compare TBool TBool = EQ
+    compare TBool _ = LT
+    compare TString t2
+      | t2 == TString = EQ
+      | t2 `elem` [TInt, TBool] = GT
+      | otherwise = LT
+    compare (TActor _) (TResource _) = LT
+    compare (TActor a1) (TActor a2) = compare (entityName a1) (entityName a2)
+    compare (TActor _) _ = GT
+    compare (TResource r1) (TResource r2) = compare (entityName r1) (entityName r2)
+    compare (TResource _) _ = GT
+
 instance Show ValidType where
     show TInt = "Int"
     show TBool = "Bool"
@@ -57,6 +73,11 @@ instance Show ValidType where
     show (TResource ent) = T.unpack $ entityName ent
 
 data EntityClass = EActor | EResource
+    deriving (Eq, Ord, Show)
+
+data TypedHeader
+    = HPermission PermissionType (GEntity ActorMarker (Text, ValidType)) (GEntity ResourceMarker (Text, ValidType))
+    | HDefinition Text [ValidType]
     deriving (Eq, Ord, Show)
 
 data PartialInfo = PartialInfo
@@ -97,7 +118,7 @@ type TypeGen a = StateT PartialInfo (Either TypeError) a
 
 type TypeCheck a = ReaderT TypeInfo (Either TypeError) a
 
-runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError (TypeInfo, [Predicate ValidVal])
+runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError (TypeInfo, Map TypedHeader (Predicate ValidVal))
 runTypeChecker provider ast = do
     partialGlobals <- execStateT (mkGlobals provider ast) mempty
     globals <- materialize partialGlobals ast
@@ -175,30 +196,36 @@ cLookUp f err = do
         Nothing -> cTypeError err
         Just a -> return a
 
-cAssocs :: [Assoc] -> TypeCheck [Predicate ValidVal]
-cAssocs associations = do
+cAssocs :: [Assoc] -> TypeCheck (Map TypedHeader (Predicate ValidVal))
+cAssocs associations = M.fromList <$> do
     forM associations $ \assoc -> do
         let predicate = assocDefinition assoc
-        localVars <- mkLocalVars (assocHeader assoc)
-        local (localVars<>) (cPredicate predicate)
+        (localVars, header) <- mkLocalVars (assocHeader assoc)
+        p <- local (localVars<>) (cPredicate predicate)
+        return (header, p)
 
-mkLocalVars :: AssocHeader -> TypeCheck TypeInfo
-mkLocalVars (AHDef (Definition _ vars)) = do
-    let varsMap = M.fromList $ map var2pair vars
-    valVarsMap <- forM varsMap getValType
-    return mempty {variables = valVarsMap}
-mkLocalVars (AHPermission (Permission _ actorVar resourceVar)) = do
+mkLocalVars :: AssocHeader -> TypeCheck (TypeInfo, TypedHeader)
+mkLocalVars (AHDef (Definition name vars)) = do
+    let types = map typedVarType vars
+    validTypes <- forM types getValType
+    let header = HDefinition name validTypes
+    let argNames = map typedVarName vars
+    return (mempty {variables = M.fromList (zip argNames validTypes)}, header)
+mkLocalVars (AHPermission (Permission perm actorVar resourceVar)) = do
     let (actorName, actorType) = var2pair actorVar
     let (resourceName, resourceType) = var2pair resourceVar
     when (actorName == resourceName) $
         cTypeError ("actor "<>actorName<>" and resource "<>resourceName<>" can't have the same name")
     actorType' <- cLookUp (M.lookup actorType . entities) ("Actor "<>actorType<>" not defined")
-    when (actorType' /= TActor (actor actorType undefined undefined)) $
-        cTypeError "when defining a permission, first argument should be an Actor"
     resourceType' <- cLookUp (M.lookup resourceType . entities) ("Resource "<>resourceType<>" not defined")
-    when (resourceType' /= TResource (resource resourceType undefined undefined)) $
-        cTypeError $ tShow resourceType'<>": when defining a permission, second argument should be a Resource"
-    return mempty {variables = M.fromList [(actorName, actorType'), (resourceName, resourceType')]}
+    case (actorType', resourceType') of
+        (TActor actorEnt, TResource resourceEnt) ->
+            let scopeVariables = M.fromList [(actorName, actorType'), (resourceName, resourceType')]
+                header = HPermission perm actorEnt resourceEnt
+             in return (mempty {variables = scopeVariables}, header)
+        (_ ,TResource _) -> cTypeError "when defining a permission, first argument should be an Actor"
+        (TActor _, _) -> cTypeError $ tShow resourceType'<>": when defining a permission, second argument should be a Resource"
+        (_, _) -> cTypeError "when defining a permission, first argument should be an Actor and second a Resource"        
 
 getValType :: Type -> TypeCheck ValidType
 getValType "Int" = return TInt
