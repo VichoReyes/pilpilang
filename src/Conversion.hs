@@ -2,69 +2,37 @@
 
 module Conversion where
 
-import Syntax
-import Data.Maybe (mapMaybe, fromJust)
+import Syntax (Value (..), Predicate(..))
+import Data.Maybe (fromJust, isJust)
 import Data.Text (Text)
 import Control.Monad.Reader (Reader)
 import Control.Monad.RWS (asks)
 import qualified Data.Text as T
-import Types (TypeInfo (entities), ValidType (..), ValidVal (ValidVal, vvContents), tShow)
-import Data.Map ((!))
-import Data.List.NonEmpty (NonEmpty(..))
-import Data.Foldable (find)
-import Control.Applicative ((<|>))
+import Types (ValidType (..), ValidVal (ValidVal, vvContents, vvType), tShow, TypedHeader (..), isPrimitive)
+import Data.Map (Map)
+import qualified Data.Map as M
+import qualified Data.List.NonEmpty as NE
+import Control.Monad.State (execState, get, State, MonadState (put), evalState)
 
-data ConverterInfo = ConverterInfo
-    { ciAST :: AST
-    , ciTypeInfo :: TypeInfo
-    , ciValidPredicates :: [Predicate ValidVal]
-    } deriving (Eq, Show)
+type Conversor = Reader (Map TypedHeader ([Text], Predicate ValidVal))
 
-type Conversor = Reader ConverterInfo
+type Scope = [(ValidVal, (Char, Int))]
 
-renderAST :: Conversor Text
-renderAST = do
-    ast <- asks ciAST
-    let permissions = mapMaybe fromPermission $ astAssociations ast
-    T.intercalate "\n" <$> traverse renderPermission permissions
+data Query = Query
+    { qSelect :: [(Text, Text)] -- SELECT a.b, c.d 
+    , qFrom :: [(Text, (Char, Int))]     -- FROM arts a1, cuisines c1
+    , qWhere :: [Text]
+    } deriving (Show, Eq, Ord)
 
-renderPermission :: (Permission, Predicate ValidVal) -> Conversor Text
-renderPermission (Permission perm act res, pred) = do
-    -- let resType = asks fst
-    actType <- asks ((!typedVarType act) . entities . ciTypeInfo)
-    let TActor actEntity = actType
-    resType <- asks ((!typedVarType res) . entities . ciTypeInfo)
-    let TResource resEntity = resType
-    let context = [(resVal resEntity, entityTable resEntity), (actVal actEntity, entityTable actEntity)]
-    sqlPred <- renderPred context pred
-    return $ renderPermType perm actEntity resEntity sqlPred
-        where resVal ent = ValidVal (VVar $ typedVarName res) (TResource ent :| [])
-              actVal ent = ValidVal (VVar $ typedVarName act) (TActor ent :| [])
+qRender :: Query -> Text
+qRender Query {qSelect = select', qFrom = from', qWhere = where'}
+    = "SELECT "<>T.intercalate ", " (map (\(a, b) -> a<>"."<>b) select')
+    <> " FROM "<>T.intercalate ", " (map (\(a, (c, i)) -> a<>" "<>T.pack (c : show i)) from')
+    <> " WHERE "<>T.intercalate " AND " where'
 
-renderPermType :: PermissionType -- ^ select, insert, update, etc
-  -> GEntity ActorMarker (Text, ValidType) -- ^ actor entity, with typed columns 
-  -> GEntity ResourceMarker (Text, ValidType) -- ^ resource entity, same
-  -> Text -- ^ the predicate, already translated to SQL
-  -> Text -- final policy
-renderPermType pType act res sqlPred =
-    "CREATE POLICY todo_name ON " <> res' <> " FOR " <> operation
-        <> " " <> conditionOpener <> " (" <> actID act <> " IN ("
-        <> sqlPred <> "));"
-            where
-                res' = entityTable res
-                operation = case pType of
-                  PCanSelect -> "SELECT"
-                  PCanInsert -> "INSERT"
-                  PCanUpdate -> "UPDATE"
-                  PCanDelete -> "DELETE"
-                conditionOpener = case pType of
-                    PCanInsert -> "WITH CHECK"
-                    _ -> "USING"
-                actID _ = "current_user"
-
-renderPred:: [(ValidVal, Text)] -> Predicate ValidVal -> Conversor Text
-renderPred scope pred = do
-    case pred of
+renderPred :: Scope -> Predicate ValidVal -> Conversor Text
+renderPred scope predicate = do
+    case predicate of
         PAlways -> return "(1)"
         PAnd p1 p2 -> (\s1 s2 -> s1<>" AND "<>s2) <$> renderPred scope p1 <*> renderPred scope p2
         POr p1 p2 -> (\s1 s2 -> s1<>" OR "<>s2) <$> renderPred scope p1 <*> renderPred scope p2
@@ -72,37 +40,84 @@ renderPred scope pred = do
         PGreaterT v1 v2 -> return $ renderCmp ">" v1 v2
         PLessT v1 v2 -> return $ renderCmp "<" v1 v2
         PredCall txt vvs -> do
-            let start = "ROW("<>T.intercalate "," (map renderVal vvs)<>") IN ("
-            assocs <- asks (astAssociations . ciAST)
-            let newAssoc = fromJust $ find (findDef txt . assocHeader) assocs
-            asdf <- renderAssoc newAssoc
-            return $ start<>asdf<>")"
+            let predHeader = HDefinition txt $ map (NE.head . vvType) vvs
+            predDef' <- asks (M.lookup predHeader)
+            let (varNames, predDef) = fromJust predDef'
+            subquery <- renderAssoc predHeader varNames predDef
+            let start = "ROW("<>T.intercalate "," (map renderVal' vvs)<>") IN ("
+            return $ start<>qRender subquery<>")"
 
         where
             renderCmp cmp v1 v2 = do
-                let s1 = renderVal v1
-                    s2 = renderVal v2
+                let s1 = renderVal' v1
+                    s2 = renderVal' v2
                  in s1 <> cmp <> s2
-            renderVal val = fromJust $ lookup val scope <|> renderLit val
+            renderVal' = renderVal scope
 
-renderAssoc :: Assoc -> Conversor Text
-renderAssoc Assoc {assocHeader=ah, assocDefinition=p} = do
-    (joinTables, conditions, scope) <- createScope assoc
-    renderPred scope p
+renderVal :: Scope -> ValidVal -> Text
+renderVal scope val
+    | isJust (lookup val scope) =
+        let (c, i) = fromJust (lookup val scope)
+         in T.pack $ c : show i
+renderVal _ ValidVal {vvContents = VLitBool b} = tShow b
+renderVal _ ValidVal {vvContents = VLitString b} = "'"<>b<>"'" -- TODO escape
+renderVal _ ValidVal {vvContents = VLitInt b} = tShow b
+renderVal scope val = error $ "renderVal: scope = "<>show scope<>" and val = "<>show val
 
-renderLit :: ValidVal -> Maybe Text
-renderLit ValidVal {vvContents = VLitBool b} = Just $ tShow b
-renderLit ValidVal {vvContents = VLitString b} = Just $ "'"<>b<>"'" -- TODO escape
-renderLit ValidVal {vvContents = VLitInt b} = Just $ tShow b
-renderLit _ = Nothing
+renderAssoc :: TypedHeader -> [Text] -> Predicate ValidVal -> Conversor Query
+renderAssoc header varNames predicate = do
+    let scope = mkScope header
+    (joinTables, conditions, scope') <- removeIndirections predicate scope
+    predWhere <- renderPred scope' predicate
+    return Query
+        { qFrom = joinTables
+        , qSelect = undefined
+        , qWhere = predWhere : conditions
+    }
+        where
+            mkScope (HDefinition _ types) = expandScope [] $ zip varNames types
+            mkScope (HPermission _ act res) = expandScope [] $ zip varNames [TActor act, TResource res]
 
-findDef :: Text -> AssocHeader -> Bool
-findDef txt header = case header of
-  AHDef Definition {defName=name} -> name == txt
-  _ -> False
+expandScope :: Scope -> [(Text, ValidType)] -> Scope
+expandScope s1 pairs = execState (traverse addPair pairs) s1
+    where
+        addPair :: (Text, ValidType) -> State Scope ()
+        addPair (name, typ) = do
+            let (char, _) = fromJust $ T.uncons name
+            wholeScope <- get
+            let collisions = filter ((==char) . fst . snd) wholeScope
+            let highestNum = 1 + foldr (max . snd . snd) 0 collisions
+            put $ (ValidVal (VVar name) (NE.fromList [typ]), (char, highestNum)) : wholeScope
 
-fromPermission :: Assoc -> Maybe (Permission, Predicate ValidVal)
-fromPermission assoc = case assocHeader assoc of
-    AHPermission per -> Just (per, undefined assocDefinition assoc)
-    AHDef _ -> Nothing
 
+removeIndirections :: Predicate ValidVal -> Scope -> Conversor ([(Text, (Char, Int))], [Text], Scope)
+removeIndirections predicate prevScope = return . unzip3 $ evalState (concat <$> traverse extractInfo values) prevScope
+    where
+        values :: [ValidVal]
+        values = getValues predicate
+        getValues PAlways = []
+        getValues (PredCall _ args) = args
+        getValues (PAnd p1 p2) = getValues p1 ++ getValues p2
+        getValues (POr p1 p2) = getValues p1 ++ getValues p2
+        getValues (PEquals v1 v2) = [v1, v2]
+        getValues (PGreaterT v1 v2) = [v1, v2]
+        getValues (PLessT v1 v2) = [v1, v2]
+
+        extractInfo :: ValidVal -> State Scope [((Text, (Char, Int)), Text, (ValidVal, (Char, Int)))]
+        extractInfo v = case vvContents v of
+            VLitInt _ -> return []
+            VLitBool _ -> return []
+            VLitString _ -> return []
+            VVar _ -> return []
+            VVarField inner txt -> do
+                let innerVal = ValidVal inner (NE.fromList $ NE.tail $ vvType v)
+                innerResults <- extractInfo innerVal
+                if isPrimitive (NE.head (vvType v))
+                    then return innerResults
+                    else do
+                        curScope <- get
+                        -- expand scope with new table
+                        -- add the table to tables
+                        -- create conditions
+                        -- return all three
+                        undefined 

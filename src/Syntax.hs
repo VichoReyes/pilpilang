@@ -43,11 +43,7 @@ pAST = do
     astAssociations <- some (lexeme pAssoc)
     return AST{..}
 
--- Basically, there are 4 possibilities for entities:
--- 1. actors without types (entityClass = ActorMarker, columnType = Text)
--- 2. actors with types (entityClass = ActorMarker, columnType = (Text, Text))
--- 1. resources without types (entityClass = ResourceMarker, columnType = Text)
--- 2. resources with types (entityClass = ResourceMarker, columnType = (Text, Text))
+-- entityClass = ActorMarker | ResourceMarker
 data GEntity entityClass columnType = Entity
     { entityName :: Text
     , entityTable :: Text

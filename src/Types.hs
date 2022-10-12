@@ -72,6 +72,11 @@ instance Show ValidType where
     show (TActor ent) = T.unpack $ entityName ent
     show (TResource ent) = T.unpack $ entityName ent
 
+isPrimitive :: ValidType -> Bool
+isPrimitive (TActor _) = False
+isPrimitive (TResource _) = False
+isPrimitive _ = True
+
 data EntityClass = EActor | EResource
     deriving (Eq, Ord, Show)
 
@@ -118,7 +123,9 @@ type TypeGen a = StateT PartialInfo (Either TypeError) a
 
 type TypeCheck a = ReaderT TypeInfo (Either TypeError) a
 
-runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError (TypeInfo, Map TypedHeader (Predicate ValidVal))
+type TypedBody = ([Text], Predicate ValidVal)
+
+runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError (TypeInfo, Map TypedHeader TypedBody)
 runTypeChecker provider ast = do
     partialGlobals <- execStateT (mkGlobals provider ast) mempty
     globals <- materialize partialGlobals ast
@@ -196,21 +203,21 @@ cLookUp f err = do
         Nothing -> cTypeError err
         Just a -> return a
 
-cAssocs :: [Assoc] -> TypeCheck (Map TypedHeader (Predicate ValidVal))
+cAssocs :: [Assoc] -> TypeCheck (Map TypedHeader TypedBody)
 cAssocs associations = M.fromList <$> do
     forM associations $ \assoc -> do
         let predicate = assocDefinition assoc
         (localVars, header) <- mkLocalVars (assocHeader assoc)
-        p <- local (localVars<>) (cPredicate predicate)
-        return (header, p)
+        p <- local (\ti -> ti {variables = M.fromList localVars}) (cPredicate predicate)
+        return (header, (map fst localVars, p))
 
-mkLocalVars :: AssocHeader -> TypeCheck (TypeInfo, TypedHeader)
+mkLocalVars :: AssocHeader -> TypeCheck ([(Text, ValidType)], TypedHeader)
 mkLocalVars (AHDef (Definition name vars)) = do
     let types = map typedVarType vars
     validTypes <- forM types getValType
     let header = HDefinition name validTypes
     let argNames = map typedVarName vars
-    return (mempty {variables = M.fromList (zip argNames validTypes)}, header)
+    return (zip argNames validTypes, header)
 mkLocalVars (AHPermission (Permission perm actorVar resourceVar)) = do
     let (actorName, actorType) = var2pair actorVar
     let (resourceName, resourceType) = var2pair resourceVar
@@ -220,12 +227,12 @@ mkLocalVars (AHPermission (Permission perm actorVar resourceVar)) = do
     resourceType' <- cLookUp (M.lookup resourceType . entities) ("Resource "<>resourceType<>" not defined")
     case (actorType', resourceType') of
         (TActor actorEnt, TResource resourceEnt) ->
-            let scopeVariables = M.fromList [(actorName, actorType'), (resourceName, resourceType')]
+            let scopeVariables = [(actorName, actorType'), (resourceName, resourceType')]
                 header = HPermission perm actorEnt resourceEnt
-             in return (mempty {variables = scopeVariables}, header)
+             in return (scopeVariables, header)
         (_ ,TResource _) -> cTypeError "when defining a permission, first argument should be an Actor"
         (TActor _, _) -> cTypeError $ tShow resourceType'<>": when defining a permission, second argument should be a Resource"
-        (_, _) -> cTypeError "when defining a permission, first argument should be an Actor and second a Resource"        
+        (_, _) -> cTypeError "when defining a permission, first argument should be an Actor and second a Resource"
 
 getValType :: Type -> TypeCheck ValidType
 getValType "Int" = return TInt
