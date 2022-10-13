@@ -245,7 +245,14 @@ data Value
     | VLitInt Int
     | VLitBool Bool
     | VLitString Text
-    deriving (Eq, Show, Ord)
+    deriving (Eq, Ord)
+
+instance Show Value where
+    show (VVar t) = T.unpack t
+    show (VVarField v f) = show v ++ "." ++ T.unpack f
+    show (VLitBool b) = show b
+    show (VLitInt i) = show i
+    show (VLitString s) = show s
 
 pValue :: Parser Value
 pValue = lexeme $ choice

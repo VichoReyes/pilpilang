@@ -32,7 +32,7 @@ data ValidVal = ValidVal
     } deriving (Eq)
 
 instance Show ValidVal where
-    show (ValidVal c t) = "("<>show c<>": "<>show t<>")"
+    show (ValidVal c t) = show c<>": "<>show (NE.head t)
 
 data ValidType
     = TInt
