@@ -8,8 +8,7 @@ import System.Environment (getArgs)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Types (runTypeChecker, TypeError (TypeError), ColumnTypeProvider)
-import Control.Monad (forM_)
-import qualified Data.Map as M
+import Conversion (convert)
 -- import Conversion
 
 data DBThing = DBThing
@@ -31,7 +30,6 @@ main = do
             case runTypeChecker DBThing ast of
                 Right (_, preds) -> do
                     putStrLn "type checked correctly:"
-                    let preds' = M.toList preds
-                    forM_ preds' print
+                    mapM_ TIO.putStrLn $ convert preds
                 Left (TypeError t) -> TIO.putStrLn t
         _ -> putStr "invalid"
