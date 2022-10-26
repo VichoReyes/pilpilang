@@ -11,6 +11,7 @@ resource Message {
     columns [
         id: Int,
         chat: Chat,
+        contents: String,
     ]
 }
 
