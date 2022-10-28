@@ -8,18 +8,28 @@ import Data.Text (Text)
 import Control.Monad.Reader (Reader, runReader)
 import Control.Monad.RWS (asks)
 import qualified Data.Text as T
-import Types (ValidType (..), ValidVal (ValidVal, vvContents, vvType), tShow, TypedHeader (..), isPrimitive, TypedBody)
+import Types (ValidType (..), ValidVal (ValidVal, vvContents, vvType), tShow, TypedHeader (..), isPrimitive, TypedBody, NonPrimitive(..))
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.List.NonEmpty as NE
-import Control.Monad.State (get, MonadState (put), StateT (runStateT), evalStateT, lift)
+import Control.Monad.State (get, MonadState (put), StateT, evalStateT, lift)
 import Control.Monad (forM)
 
 type Conversor = Reader (Map TypedHeader ([Text], Predicate ValidVal))
 
 type ConversorState = StateT Scope Conversor
 
-type Scope = [(ValidVal, (Char, Int))]
+data Replaced
+    = TableNick (Char, Int) NonPrimitive
+    | TableName Text NonPrimitive
+    | PrimitiveLit Value
+    | PrimitiveReplace Value
+
+replace :: Replaced -> ConversorState Text -- shouldn't really be text
+replace (TableNick (c, i) np) = undefined
+replace (TableName t np) = undefined
+
+type Scope = [(ValidVal, Replaced)]
 
 data Query = Query
     { qSelect :: [(Text, Text)] -- SELECT a.b, c.d 
@@ -69,12 +79,11 @@ renderPred predicate = do
 
 -- render a value. There are different cases:
 -- literal -> render as literal
--- variable -> opens up two more cases
---    type of variable is primitive -> OH GOD DESIGN PROBLEM
---    type of variable is not primitive -> look it up in scope, render
+-- variable -> look it up in scope, render
 -- value.field -> opens up two more cases
 --    type of field is primitive -> "${render value}.field"
 --    type of field is not primitive -> look it up in scope, render
+-- non primitives should have been put in scope by previous phase
 renderVal :: ValidVal -> ConversorState Text
 renderVal ValidVal {vvContents = VLitBool b} = return $ tShow b
 renderVal ValidVal {vvContents = VLitString b} = return $ "'"<>b<>"'" -- TODO escape
@@ -82,14 +91,14 @@ renderVal ValidVal {vvContents = VLitInt b} = return $ tShow b
 renderVal val@ValidVal {vvContents = VVarField v f} = do
     scope <- get
     case lookup val scope of
-        Just (c, i) -> return . T.pack $ c : show i
+        Just x -> replace x
         Nothing -> do
             tableThing <- renderVal (ValidVal v (NE.fromList (NE.tail (vvType val))))
             return $ tableThing <> "." <> f
 renderVal val = do
     scope <- get
     case lookup val scope of
-        Just (c, i) -> return . T.pack $ c : show i
+        Just x -> replace x
         Nothing -> error $ "renderVal: scope = "<>show scope<>" and val = "<>show val
 
 

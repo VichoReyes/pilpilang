@@ -43,24 +43,21 @@ pAST = do
     astAssociations <- some (lexeme pAssoc)
     return AST{..}
 
+type ColumnType = (Text, Maybe [Text])
+
 -- entityClass = ActorMarker | ResourceMarker
 data GEntity entityClass columnType = Entity
     { entityName :: Text
     , entityTable :: Text
+    , entityKeys :: [Text]
     , entityColumns :: [columnType]
     } deriving (Eq, Show, Ord)
 
 data ActorMarker
-type Actor = GEntity ActorMarker (Text, Text)
+type Actor = GEntity ActorMarker (Text, ColumnType)
 
 data ResourceMarker
-type Resource = GEntity ResourceMarker (Text, Text)
-
--- constructors
-actor :: Text -> Text -> [a] -> GEntity ActorMarker a
-resource :: Text -> Text -> [a] -> GEntity ResourceMarker a
-actor = Entity
-resource = Entity
+type Resource = GEntity ResourceMarker (Text, ColumnType)
 
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
@@ -71,19 +68,20 @@ pActor = pEntity "actor"
 pResource :: Parser Resource
 pResource = pEntity "resource"
 
-pEntity :: Text -> Parser (GEntity entityClass (Text, Text))
+pEntity :: Text -> Parser (GEntity entityClass (Text, ColumnType))
 pEntity keyword = do
     pKeyword keyword
     entityName <- pTitleCasedWord
         <?> T.unpack keyword <> " name (should start with upper case letter)"
     symbol "{"
     symbol "table" <?> "table (which table stores "<>T.unpack entityName<>"s?)"
+    entityKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
     entityTable <- pQuotedLiteral False <?> "table name"
     entityColumns <- pColumnsList
     symbol "}"
     return $ Entity {..}
 
-pColumnsList :: Parser [(Text, Text)]
+pColumnsList :: Parser [(Text, ColumnType)]
 pColumnsList = go <|> return []
     where
         go = do
@@ -96,7 +94,8 @@ pColumnsList = go <|> return []
             colName <- pLowerCasedWord <|> pQuotedLiteral False
             symbol ":"
             colType <- pTitleCasedWord
-            return (colName, colType)
+            foreignKeys <- optional $ symbol "(" *> pCommaSepList (pQuotedLiteral False) <* symbol ")"
+            return (colName, (colType, foreignKeys))
 
 pTitleCasedWord :: Parser Text
 pTitleCasedWord = lexeme $ do

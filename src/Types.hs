@@ -77,6 +77,23 @@ isPrimitive (TActor _) = False
 isPrimitive (TResource _) = False
 isPrimitive _ = True
 
+data NonPrimitive
+    = NPActor (GEntity ActorMarker (Text, ValidType))
+    | NPResource (GEntity ResourceMarker (Text, ValidType))
+
+npFromType :: ValidType -> Maybe NonPrimitive
+npFromType (TActor a) = Just $ NPActor a
+npFromType (TResource r) = Just $ NPResource r
+npFromType _ = Nothing
+
+npTable :: NonPrimitive -> Text
+npTable (NPActor a) = entityTable a
+npTable (NPResource a) = entityTable a
+
+npKeys :: NonPrimitive -> [Text]
+npKeys (NPActor a) = entityKeys a
+npKeys (NPResource a) = entityKeys a
+
 data EntityClass = EActor | EResource
     deriving (Eq, Ord, Show)
 
@@ -123,6 +140,9 @@ type TypeGen a = StateT PartialInfo (Either TypeError) a
 
 type TypeCheck a = ReaderT TypeInfo (Either TypeError) a
 
+typeFail :: Text -> Either TypeError a
+typeFail = Left . TypeError
+
 type TypedBody = ([Text], Predicate ValidVal)
 
 runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError (TypeInfo, Map TypedHeader TypedBody)
@@ -155,21 +175,35 @@ genEnt ast entName = do
             case filter (\a -> entityName a == entName) $ astResources ast of
               [] -> Left . TypeError $ entName<>" not found"
               [ent] -> do
-                    cols <- mapM (genEnt ast . snd) (entityColumns ent)
+                    cols <- mapM processColumn (entityColumns ent)
                     return $ TResource ent {entityColumns = zip (map fst $ entityColumns ent) cols}
               _ -> error "More than one definition? Shouldn't happen"
         [ent] -> do
-            cols <- mapM (genEnt ast . snd) (entityColumns ent)
+            cols <- mapM processColumn (entityColumns ent)
             return $ TActor ent {entityColumns = zip (map fst $ entityColumns ent) cols}
         _ -> error "More than one definition? Shouldn't happen"
+        where
+            processColumn :: (a, (Text, Maybe [b])) -> Either TypeError ValidType
+            processColumn a = do
+                let theType = snd a
+                ent <- genEnt ast (fst theType)
+                case npFromType ent of
+                    Nothing -> return ent
+                    Just np -> do
+                        foreignKeys <- case snd theType of
+                            Nothing -> typeFail "missing foreign keys in declaration"
+                            Just keys -> return keys
+                        when (length foreignKeys /= length (npKeys np)) $
+                            typeFail $ "wrong number of foreign keys for " <> tShow ent
+                        return ent
 
 -- TODO check for repeats
-mkColumnMap :: GEntity klass (Text, Text) -> TypeGen (Map Text Type)
+mkColumnMap :: GEntity klass (Text, ColumnType) -> TypeGen (Map Text Type)
 mkColumnMap entity = do
     let columns = entityColumns entity
     let columnMap = M.fromList columns
     if M.size columnMap == length columns
-        then return columnMap
+        then return (fst <$> columnMap)
         else lift $ Left (TypeError ("duplicated column in "<>entityName entity))
 
 mkTypeInfo :: [Actor] -> [Resource] -> TypeGen ()
@@ -177,12 +211,12 @@ mkTypeInfo acts ress = do
     forM_ acts (addEntity EActor)
     forM_ ress (addEntity EResource)
 
-addEntity :: EntityClass -> GEntity a (Text, Type) -> TypeGen ()
+addEntity :: EntityClass -> GEntity a (Text, ColumnType) -> TypeGen ()
 addEntity klass a = do
     typeInfo <- get
     actorColumnsMap <- mkColumnMap a
     if M.member (entityName a) (piEntities typeInfo)
-        then lift . Left . TypeError $ "entity "<>entityName a<>" defined twice"
+        then lift . typeFail $ "entity "<>entityName a<>" defined twice"
         else put typeInfo {piEntities = M.insert (entityName a) (klass, actorColumnsMap) (piEntities typeInfo)}
 
 mkGlobals :: ColumnTypeProvider a => a -> AST -> TypeGen ()
@@ -293,8 +327,8 @@ cValue (VVarField varName varField) = do
         propertyLookup varField (NE.head varType)
 
 propertyLookup :: Text -> ValidType -> Maybe ValidType
-propertyLookup k (TActor (Entity _ _ cols)) = lookup k cols
-propertyLookup k (TResource (Entity _ _ cols)) = lookup k cols
+propertyLookup k (TActor Entity {entityColumns = cols}) = lookup k cols
+propertyLookup k (TResource Entity {entityColumns = cols}) = lookup k cols
 propertyLookup _ _ = Nothing
 
 addFunction :: Text -> [TypedVar] -> TypeGen ()
