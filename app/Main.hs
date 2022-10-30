@@ -7,13 +7,10 @@ import Text.Megaparsec
 import System.Environment (getArgs)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Types (runTypeChecker, TypeError (TypeError), ColumnTypeProvider)
-import Conversion (convert)
+import Types (runTypeChecker, TypeError (TypeError))
+-- import Conversion (convert)
 -- import Conversion
-
-data DBThing = DBThing
-
-instance ColumnTypeProvider DBThing
+convert = undefined
 
 main :: IO ()
 main = do
@@ -27,9 +24,9 @@ main = do
             contents <- TIO.readFile path
             parseTest (pAST <* eof) contents
             let Right ast = parse (pAST <* eof) "" contents
-            case runTypeChecker DBThing ast of
-                Right (_, preds) -> do
+            case runTypeChecker ast of
+                Right preds -> do
                     putStrLn "type checked correctly:"
-                    mapM_ TIO.putStrLn $ convert preds
+                    mapM_ print preds
                 Left (TypeError t) -> TIO.putStrLn t
         _ -> putStr "invalid"

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Types where
 
 import Syntax
@@ -11,14 +12,17 @@ import Control.Monad (forM_, forM, when)
 import Control.Monad.Reader (ReaderT (runReaderT), MonadReader (local, ask))
 import qualified Data.Text as T
 import Data.String (IsString)
-import qualified Data.List.NonEmpty as NE
-import Data.List.NonEmpty ((<|))
+import Lens.Micro.Platform
+import Data.Either (fromRight)
 
 tShow :: Show a => a -> Text
 tShow = T.pack . show
 
+{-
+This should eventually connect to a database
 class ColumnTypeProvider a where
     fillTypes :: a -> GEntity klass Text -> Either TypeError (GEntity klass (Text, Text))
+-}
 
 newtype TypeError = TypeError
     { getTypeError :: Text
@@ -26,115 +30,61 @@ newtype TypeError = TypeError
 
 type Type = Text
 
-data ValidVal = ValidVal
-    { vvContents :: Value
-    , vvType :: NE.NonEmpty ValidType
-    } deriving (Eq)
-
-instance Show ValidVal where
-    show (ValidVal c t) = show c<>": "<>show (NE.head t)
+newtype NonPrimitive = NonPrimitive
+        { _getNonPrimitive :: GEntity NonPrimitive Primitive }
+    deriving (Eq, Ord, Show)
 
 data ValidType
+    = TPrimitive
+        { _typePrimitive :: Primitive }
+    | TEntity
+        { _typeNonPrimitive :: NonPrimitive }
+    deriving (Eq, Ord, Show)
+
+data Primitive
     = TInt
     | TBool
     | TString
-    | TActor (GEntity ActorMarker (Text, ValidType))
-    | TResource (GEntity ResourceMarker (Text, ValidType))
+    deriving (Eq, Ord, Show)
 
-instance Eq ValidType where
-    TInt == TInt = True
-    TBool == TBool = True
-    TString == TString = True
-    TActor ent1 == TActor ent2 = entityName ent1 == entityName ent2
-    TResource ent1 == TResource ent2 = entityName ent1 == entityName ent2
-    _ == _ = False
-
-instance Ord ValidType where
-    compare TInt TInt = EQ
-    compare TInt _ = LT
-    compare TBool TInt = GT
-    compare TBool TBool = EQ
-    compare TBool _ = LT
-    compare TString t2
-      | t2 == TString = EQ
-      | t2 `elem` [TInt, TBool] = GT
-      | otherwise = LT
-    compare (TActor _) (TResource _) = LT
-    compare (TActor a1) (TActor a2) = compare (entityName a1) (entityName a2)
-    compare (TActor _) _ = GT
-    compare (TResource r1) (TResource r2) = compare (entityName r1) (entityName r2)
-    compare (TResource _) _ = GT
-
-instance Show ValidType where
-    show TInt = "Int"
-    show TBool = "Bool"
-    show TString = "String"
-    show (TActor ent) = T.unpack $ entityName ent
-    show (TResource ent) = T.unpack $ entityName ent
+makeLenses ''ValidType
+makeLenses ''NonPrimitive
 
 isPrimitive :: ValidType -> Bool
-isPrimitive (TActor _) = False
-isPrimitive (TResource _) = False
-isPrimitive _ = True
+isPrimitive (TPrimitive _) = True
+isPrimitive (TEntity _) = False
 
-data NonPrimitive
-    = NPActor (GEntity ActorMarker (Text, ValidType))
-    | NPResource (GEntity ResourceMarker (Text, ValidType))
-
-npFromType :: ValidType -> Maybe NonPrimitive
-npFromType (TActor a) = Just $ NPActor a
-npFromType (TResource r) = Just $ NPResource r
-npFromType _ = Nothing
-
-npTable :: NonPrimitive -> Text
-npTable (NPActor a) = entityTable a
-npTable (NPResource a) = entityTable a
-
-npKeys :: NonPrimitive -> [Text]
-npKeys (NPActor a) = entityKeys a
-npKeys (NPResource a) = entityKeys a
-
-data EntityClass = EActor | EResource
-    deriving (Eq, Ord, Show)
-
-data TypedHeader
-    = HPermission PermissionType (GEntity ActorMarker (Text, ValidType)) (GEntity ResourceMarker (Text, ValidType))
-    | HDefinition Text [ValidType]
-    deriving (Eq, Ord, Show)
-
-data PartialInfo = PartialInfo
-    { piEntities :: Map Text (EntityClass, Map Text Type) -- actor/resource name -> (Actor|Resource, column -> type)
-    , piFunctions :: Map Text [Type] -- types of the arguments
+data AssocKey = AssocKey
+    { assocName :: Either PermissionType Text
+    , assocTypes :: [ValidType]
     } deriving (Eq, Ord, Show)
 
-instance Semigroup PartialInfo where
-    ti1 <> ti2 = PartialInfo
-        { piEntities = piEntities ti1 <> piEntities ti2
-        , piFunctions = piFunctions ti1 <> piFunctions ti2 }
+data PartialInfo = PartialInfo
+    { _piEntities :: Map Text Entity
+    , _piFunctions :: Map Text [Type] -- types of the arguments
+    } deriving (Eq, Ord, Show)
 
-instance Monoid PartialInfo where
-    mempty = PartialInfo
-        { piEntities = M.empty
-        , piFunctions = M.empty
-        }
+makeLenses ''PartialInfo
 
 data TypeInfo = TypeInfo
-    { entities :: Map Type ValidType -- actor/resource name -> Entity
-    , functions :: Map Text [ValidType] -- types of the arguments
-    , variables :: Map Text ValidType
+    { _entities :: Map Type ValidType -- actor/resource name -> Entity
+    , _functions :: Map Text [ValidType] -- types of the arguments
+    , _variables :: Map Text ValidType
     } deriving (Eq, Show)
 
 instance Semigroup TypeInfo where
     ti1 <> ti2 = TypeInfo
-        { entities = entities ti1 <> entities ti2
-        , functions = functions ti1 <> functions ti2
-        , variables = variables ti1 <> variables ti2 }
+        { _entities = _entities ti1 <> _entities ti2
+        , _functions = _functions ti1 <> _functions ti2
+        , _variables = _variables ti1 <> _variables ti2 }
 
 instance Monoid TypeInfo where
     mempty = TypeInfo
-        { entities = M.empty
-        , functions = M.empty
-        , variables = M.empty }
+        { _entities = M.empty
+        , _functions = M.empty
+        , _variables = M.empty }
+
+makeLenses ''TypeInfo
 
 type TypeGen a = StateT PartialInfo (Either TypeError) a
 
@@ -143,14 +93,13 @@ type TypeCheck a = ReaderT TypeInfo (Either TypeError) a
 typeFail :: Text -> Either TypeError a
 typeFail = Left . TypeError
 
-type TypedBody = ([Text], Predicate ValidVal)
+type TypedAST = Map AssocKey (GAssoc NonPrimitive ValidType)
 
-runTypeChecker :: (ColumnTypeProvider a) => a -> AST -> Either TypeError (TypeInfo, Map TypedHeader TypedBody)
-runTypeChecker provider ast = do
-    partialGlobals <- execStateT (mkGlobals provider ast) mempty
+runTypeChecker :: AST -> Either TypeError TypedAST
+runTypeChecker ast = do
+    partialGlobals <- execStateT (mkGlobals ast) mempty
     globals <- materialize partialGlobals ast
-    preds <- runReaderT (cAssocs (astAssociations ast)) globals
-    return (globals, preds)
+    runReaderT (cAssocs (ast ^. astAssociations)) globals
 
 materialize :: PartialInfo -> AST -> Either TypeError TypeInfo
 materialize (PartialInfo ents funcs) ast = do
@@ -158,73 +107,49 @@ materialize (PartialInfo ents funcs) ast = do
     ents' <- mapM (genEnt ast) entNames
     let entPairs = zip entNames ents'
     funcs' <- traverse (mapM $ lookupType entPairs) funcs
-    return mempty {entities = M.fromList entPairs, functions = funcs'}
+    return mempty <&> entities .~ M.fromList entPairs
+                  <&> functions .~ funcs'
         where
             lookupType entPairs typeName = case lookup typeName entPairs of
                 Nothing -> Left . TypeError $ typeName<>" not found"
                 Just b -> Right b
 
 genEnt :: AST -> Text -> Either TypeError ValidType
-genEnt _ "Int" = return TInt
-genEnt _ "String" = return TString
-genEnt _ "Bool" = return TBool
-genEnt ast entName = do
-    let entList = filter (\a -> entityName a == entName) $ astActors ast
-    case entList of
-        [] -> do
-            case filter (\a -> entityName a == entName) $ astResources ast of
-              [] -> Left . TypeError $ entName<>" not found"
-              [ent] -> do
-                    cols <- mapM processColumn (entityColumns ent)
-                    return $ TResource ent {entityColumns = zip (map fst $ entityColumns ent) cols}
-              _ -> error "More than one definition? Shouldn't happen"
-        [ent] -> do
-            cols <- mapM processColumn (entityColumns ent)
-            return $ TActor ent {entityColumns = zip (map fst $ entityColumns ent) cols}
-        _ -> error "More than one definition? Shouldn't happen"
-        where
-            processColumn :: (a, (Text, Maybe [b])) -> Either TypeError ValidType
-            processColumn a = do
-                let theType = snd a
-                ent <- genEnt ast (fst theType)
-                case npFromType ent of
-                    Nothing -> return ent
-                    Just np -> do
-                        foreignKeys <- case snd theType of
-                            Nothing -> typeFail "missing foreign keys in declaration"
-                            Just keys -> return keys
-                        when (length foreignKeys /= length (npKeys np)) $
-                            typeFail $ "wrong number of foreign keys for " <> tShow ent
-                        return ent
+genEnt _ "Int" = return (TPrimitive TInt)
+genEnt _ "String" = return (TPrimitive TString)
+genEnt _ "Bool" = return (TPrimitive TBool)
+genEnt ast entName = TEntity . NonPrimitive <$> do
+    case ast ^? astEntities . each . filtered (\a -> a ^. nameL == entName) of
+        Nothing -> typeFail $ entName <>" not found"
+        Just ent -> do
+            return $ columnsMap colWithKeys colWithout ent
+    where
+        colWithout :: Text -> Primitive
+        colWithout colType = case fromRight undefined $ genEnt ast colType of
+            TPrimitive t -> t
+            TEntity _ -> error "there should be keys"
+        colWithKeys :: [Text] -> Text -> NonPrimitive
+        colWithKeys keysList colType = case fromRight undefined $ genEnt ast colType of
+            TPrimitive _ -> error "there should not be keys for a primitive"
+            TEntity e -> if length keysList == length (e ^. getNonPrimitive . primaryKeysL)
+                then e
+                else error "wrong number of foreign keys"
 
--- TODO check for repeats
-mkColumnMap :: GEntity klass (Text, ColumnType) -> TypeGen (Map Text Type)
-mkColumnMap entity = do
-    let columns = entityColumns entity
-    let columnMap = M.fromList columns
-    if M.size columnMap == length columns
-        then return (fst <$> columnMap)
-        else lift $ Left (TypeError ("duplicated column in "<>entityName entity))
+addEntity :: Entity -> TypeGen ()
+addEntity a = do
+    existingEntity <- use (piEntities . at (a ^. nameL))
+    case existingEntity of
+        Just _ ->
+            lift . typeFail $ "entity "<>a ^. nameL<>" defined twice"
+        Nothing ->
+            piEntities . at (a ^. nameL) .= Just a
 
-mkTypeInfo :: [Actor] -> [Resource] -> TypeGen ()
-mkTypeInfo acts ress = do
-    forM_ acts (addEntity EActor)
-    forM_ ress (addEntity EResource)
-
-addEntity :: EntityClass -> GEntity a (Text, ColumnType) -> TypeGen ()
-addEntity klass a = do
-    typeInfo <- get
-    actorColumnsMap <- mkColumnMap a
-    if M.member (entityName a) (piEntities typeInfo)
-        then lift . typeFail $ "entity "<>entityName a<>" defined twice"
-        else put typeInfo {piEntities = M.insert (entityName a) (klass, actorColumnsMap) (piEntities typeInfo)}
-
-mkGlobals :: ColumnTypeProvider a => a -> AST -> TypeGen ()
-mkGlobals _provider ast = do
-    mkTypeInfo (astActors ast) (astResources ast)
-    forM_ (astAssociations ast) $ \assoc ->
-        case assocHeader assoc of
-            AHDef (Definition name args) -> addFunction name args
+mkGlobals :: AST -> TypeGen ()
+mkGlobals ast = do
+    mapM_ addEntity (ast ^. astEntities)
+    forM_ (ast ^. astAssociations) $ \assoc ->
+        case assoc ^. assocHeader of
+            Right (GDefinition name args) -> addFunction name args
             _ -> return () -- skip permissions, they always have the same types
 
 cTypeError :: Text -> TypeCheck a
@@ -237,7 +162,9 @@ cLookUp f err = do
         Nothing -> cTypeError err
         Just a -> return a
 
-cAssocs :: [Assoc] -> TypeCheck (Map TypedHeader TypedBody)
+cAssocs :: [Assoc] -> TypeCheck TypedAST
+cAssocs = undefined
+{-
 cAssocs associations = M.fromList <$> do
     forM associations $ \assoc -> do
         let predicate = assocDefinition assoc
@@ -246,13 +173,13 @@ cAssocs associations = M.fromList <$> do
         return (header, (map fst localVars, p))
 
 mkLocalVars :: AssocHeader -> TypeCheck ([(Text, ValidType)], TypedHeader)
-mkLocalVars (AHDef (Definition name vars)) = do
+mkLocalVars (Left (GDefinition name vars)) = do
     let types = map typedVarType vars
     validTypes <- forM types getValType
     let header = HDefinition name validTypes
     let argNames = map typedVarName vars
     return (zip argNames validTypes, header)
-mkLocalVars (AHPermission (Permission perm actorVar resourceVar)) = do
+mkLocalVars (Right (GPermission perm actorVar resourceVar)) = do
     let (actorName, actorType) = var2pair actorVar
     let (resourceName, resourceType) = var2pair resourceVar
     when (actorName == resourceName) $
@@ -267,7 +194,10 @@ mkLocalVars (AHPermission (Permission perm actorVar resourceVar)) = do
         (_ ,TResource _) -> cTypeError "when defining a permission, first argument should be an Actor"
         (TActor _, _) -> cTypeError $ tShow resourceType'<>": when defining a permission, second argument should be a Resource"
         (_, _) -> cTypeError "when defining a permission, first argument should be an Actor and second a Resource"
+-}
 
+{-
+TODO: Unify with genEnt, which does the same
 getValType :: Type -> TypeCheck ValidType
 getValType "Int" = return TInt
 getValType "String" = return TString
@@ -277,65 +207,84 @@ getValType typeName = do
     case M.lookup typeName . entities $ typeInfo of
       Nothing -> lift . Left . TypeError $ typeName<>" doesn't exist"
       Just vt -> return vt
+-}
 
-var2pair :: TypedVar -> (Text, Type)
-var2pair var = (typedVarName var, typedVarType var)
+type TypedVar = (Text, Text)
 
-cPredicate :: Predicate Value -> TypeCheck (Predicate ValidVal)
+cPredicate :: GPredicate () -> TypeCheck (GPredicate ValidType)
 cPredicate (PredCall predName args) = do
-    expectedTypes <- cLookUp (M.lookup predName . functions) $
-        (predName<>" not defined")
-    actualTypes <- forM args cValue
-    when (length expectedTypes /= length actualTypes) $
+    expectedTypes <- cLookUp (^. functions . at predName) $
+        predName<>" not defined"
+    when (length expectedTypes /= length args) $
         cTypeError (predName<>" call with wrong number of arguments")
-    forM_ (zip expectedTypes actualTypes) $ \(ex, act) ->
-        when (ex /= NE.head act)
+    args' <- mapM cValue args
+    forM_ (zip expectedTypes (map typeOf args')) $ \(ex, act) ->
+        when (ex /= act)
             (cTypeError $ "in call to "<>predName<>": expected "<>tShow ex<>", found "<>tShow act)
-    return . PredCall predName $ zipWith ValidVal args actualTypes
+    return (PredCall predName args')
 cPredicate PAlways = return PAlways
 cPredicate (PAnd p1 p2) = PAnd <$> cPredicate p1 <*> cPredicate p2
 cPredicate (POr p1 p2) = POr <$> cPredicate p1 <*> cPredicate p2
 cPredicate (PEquals val1 val2) = do
-    type1 <- cValue val1
-    type2 <- cValue val2
-    when (NE.head type1 /= NE.head type2) $ do
-        -- TODO improve representation
-        let val1' = tShow val1
-        let val2' = tShow val2
-        cTypeError ("mismatched types in "<>val1'<>" = "<>val2'<>
-            ": first is "<>tShow (NE.head type1)<>" and second is "<>tShow (NE.head type2))
-    return $ PEquals (ValidVal val1 type1) (ValidVal val2 type2)
+    val1' <- cValue val1
+    val2' <- cValue val2
+    when (typeOf val1' /= typeOf val2') $ do
+        cTypeError ("mismatched types in "<>tShow val1'<>" = "<>tShow val2'<>
+            ": first is "<>tShow (typeOf val1')<>" and second is "<>tShow (typeOf val2'))
+    return $ PEquals val1' val2'
 cPredicate (PGreaterT val1 val2) = do
-    type1 <- cValue val1
-    when (NE.head type1 /= TInt) $
-        cTypeError (tShow type1<>"doesn't support order comparison")
-    type2 <- cValue val2
-    when (NE.head type2 /= TInt) $
-        cTypeError (tShow type2<>"doesn't support order comparison")
-    return $ PGreaterT (ValidVal val1 type1) (ValidVal val2 type2)
+    val1' <- cValue val1
+    when (typeOf val1' /= TPrimitive TInt) $
+        cTypeError (tShow (typeOf val1')<>"doesn't support order comparison")
+    val2' <- cValue val2
+    when (typeOf val2' /= TPrimitive TInt) $
+        cTypeError (tShow (typeOf val2')<>"doesn't support order comparison")
+    return $ PGreaterT val1' val2'
 -- reuse the last one
 cPredicate (PLessT val1 val2) = cPredicate (PGreaterT val2 val1)
 
-cValue :: Value -> TypeCheck (NE.NonEmpty ValidType)
-cValue (VLitInt _) = pure . pure $ TInt
-cValue (VLitBool _) = pure . pure $ TBool
-cValue (VLitString _) = pure . pure $ TString
-cValue (VVar varName) = pure <$> cLookUp (M.lookup varName . variables) (varName<>" not found")
-cValue (VVarField varName varField) = do
-    varType <- cValue varName
-    lift $ maybe (Left (TypeError (tShow varType<>" has no field "<>varField))) (Right . (<|varType)) $
-        propertyLookup varField (NE.head varType)
+typeOf :: GValue ValidType -> ValidType
+typeOf (VVar _ t) = t
+typeOf (VVarField _ _ t) = t
+typeOf (VLiteral l) = TPrimitive $ literalType l
+    where
+        literalType :: Literal -> Primitive
+        literalType (LitBool _) = TBool
+        literalType (LitInt _) = TInt
+        literalType (LitString _) = TString
 
-propertyLookup :: Text -> ValidType -> Maybe ValidType
-propertyLookup k (TActor Entity {entityColumns = cols}) = lookup k cols
-propertyLookup k (TResource Entity {entityColumns = cols}) = lookup k cols
-propertyLookup _ _ = Nothing
+cValue :: Value -> TypeCheck (GValue ValidType)
+cValue (VLiteral l) = return $ VLiteral l
+cValue (VVar varName ()) = do
+    varType <- view (variables . at varName)
+    lift $ maybe (typeFail (varName<>" not found"))
+        (Right . VVar varName) varType
+cValue (VVarField obj field ()) = do
+    typedObj <- cValue obj
+    case typedObj ^? to typeOf . typeNonPrimitive . getNonPrimitive . columnsL . at field . _Just of
+        Nothing -> lift . typeFail $ tShow obj<>" has no field"<>field
+        Just fieldColType -> do
+            let fieldType = fieldColType
+                    ^?! (_Left . _1 . to TEntity <> _Right . to TPrimitive)
+            return $ VVarField typedObj field fieldType
+
+-- propertyLookup :: Text -> NonPrimitive -> Maybe ValidType
+-- propertyLookup k np = np ^. columnsL . at k
 
 addFunction :: Text -> [TypedVar] -> TypeGen ()
 addFunction name args = do
-    typeInfo <- get
-    let currentFunctions = piFunctions typeInfo
-    if M.member name currentFunctions
-        then lift . Left . TypeError $ "function "<>name<>" defined twice"
-        else put $ typeInfo {piFunctions = M.insert name (map typedVarType args) currentFunctions}
+    currentFunction <- use (piFunctions . at name)
+    case currentFunction of
+        Nothing -> piFunctions . at name .= Just (map snd args)
+        Just _ -> lift . typeFail $  "function "<>name<>" defined twice"
 
+instance Semigroup PartialInfo where
+    ti1 <> ti2 = PartialInfo
+        { _piEntities = _piEntities ti1 <> _piEntities ti2
+        , _piFunctions = _piFunctions ti1 <> _piFunctions ti2 }
+
+instance Monoid PartialInfo where
+    mempty = PartialInfo
+        { _piEntities = M.empty
+        , _piFunctions = M.empty
+        }

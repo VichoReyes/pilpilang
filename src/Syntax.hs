@@ -1,10 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use <$>" #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Syntax where
 
+import Lens.Micro.Platform
 import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Void (Void)
@@ -12,6 +17,8 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
+import Data.Map (Map)
+import qualified Data.Map as M
 
 type Parser = Parsec Void Text
 
@@ -30,58 +37,146 @@ pKeyword :: Text -> Parser Text
 pKeyword keyword = lexeme (string keyword <* notFollowedBy alphaNumChar)
 
 data AST = AST
-    { astActors :: [Actor]
-    , astResources :: [Resource]
-    , astAssociations :: [Assoc]
+    { _astEntities :: [Entity]
+    , _astAssociations :: [Assoc]
     } deriving (Eq, Show, Ord)
 
 pAST :: Parser AST
 pAST = do
     spaceConsumer -- initial discarding of whitespace
-    astActors <- some (lexeme pActor)
-    astResources <- some (lexeme pResource)
-    astAssociations <- some (lexeme pAssoc)
+    _astEntities <- some (lexeme pEntity)
+    _astAssociations <- some (lexeme pAssoc)
     return AST{..}
 
-type ColumnType = (Text, Maybe [Text])
+data GEntity withKeys without = EActor (GActor withKeys without) | EResource (GResource withKeys without)
+    deriving (Eq, Ord, Show)
 
--- entityClass = ActorMarker | ResourceMarker
-data GEntity entityClass columnType = Entity
-    { entityName :: Text
-    , entityTable :: Text
-    , entityKeys :: [Text]
-    , entityColumns :: [columnType]
+type Entity = GEntity Text Text
+
+-- run a function for columns with keys and another one for columns without
+-- ignoring column name
+columnsMap :: ([Text] -> a -> b) -> (c -> d) -> GEntity a c -> GEntity b d
+columnsMap f g = entMap
+    where
+        entMap (EActor a) = EActor a {_actorColumns = map go (_actorColumns a)}
+        entMap (EResource r) = EResource r {_resourceColumns = map go (_resourceColumns r)}
+        go (colName, colType) =
+            let colType' = case colType of
+                    Left (ent, keys) -> Left (f keys ent, keys)
+                    Right primitive -> Right (g primitive)
+             in (colName, colType')
+
+
+type ColumnType withKeys without = Either (withKeys, [Text]) without
+
+type BasicColumn = ColumnType Text Text
+
+class HasName ent where
+    nameL :: Lens' ent Text
+
+class HasTable ent where
+    tableL :: Lens' ent Text
+
+class HasPrimaryKeys ent where
+    primaryKeysL :: Lens' ent [Text]
+
+class HasColumns withKeys without ent where
+    columnsL :: Lens' ent (Map Text (ColumnType withKeys without))
+
+data GResource withKeys without = GResource
+    { _resourceName :: Text
+    , _resourceTable :: Text
+    , _resourceKeys :: [Text]
+    , _resourceColumns :: [(Text, ColumnType withKeys without)]
     } deriving (Eq, Show, Ord)
 
-data ActorMarker
-type Actor = GEntity ActorMarker (Text, ColumnType)
+type Resource = GResource Text Text
 
-data ResourceMarker
-type Resource = GEntity ResourceMarker (Text, ColumnType)
+instance HasName (GResource a b) where
+    nameL = lens _resourceName (\x y -> x {_resourceName = y})
+
+instance HasTable (GResource a b) where
+    tableL = lens _resourceTable (\x y -> x {_resourceTable = y})
+
+instance HasPrimaryKeys (GResource a b) where
+    primaryKeysL = lens _resourceKeys (\x y -> x {_resourceKeys = y})
+
+instance (HasColumns withKeys without) (GResource withKeys without) where
+    columnsL = lens (M.fromList . _resourceColumns) (\x y -> x {_resourceColumns = M.toList y})
+
+instance (HasColumns withKeys without) (GEntity withKeys without) where
+    columnsL = lens
+        (\case EActor a -> (a^.columnsL) ; EResource r -> (r^.columnsL))
+        (\e b -> case e of
+            EActor a -> EActor (a & columnsL .~ b)
+            EResource r -> EResource (r & columnsL .~ b))
+
+instance HasName (GEntity withKeys without) where
+    nameL = lens
+        (\case EActor a -> (a^.nameL) ; EResource r -> (r^.nameL))
+        (\e b -> case e of
+            EActor a -> EActor (a & nameL .~ b)
+            EResource r -> EResource (r & nameL .~ b))
+
+instance HasPrimaryKeys (GEntity withKeys without) where
+    primaryKeysL = lens
+        (\case EActor a -> (a^.primaryKeysL) ; EResource r -> (r^.primaryKeysL))
+        (\e b -> case e of
+            EActor a -> EActor (a & primaryKeysL .~ b)
+            EResource r -> EResource (r & primaryKeysL .~ b))
+
+data GActor withKeys without = GActor
+    { _actorName :: Text
+    , _actorTable :: Text
+    , _actorKeys :: [Text]
+    , _actorColumns :: [(Text, ColumnType withKeys without)]
+    } deriving (Eq, Show, Ord)
+
+type Actor = GActor Text Text
+
+instance HasName (GActor a b) where
+    nameL = lens _actorName (\x y -> x {_actorName = y})
+
+instance HasTable (GActor a b) where
+    tableL = lens _actorTable (\x y -> x {_actorTable = y})
+
+instance HasPrimaryKeys (GActor a b) where
+    primaryKeysL = lens _actorKeys (\x y -> x {_actorKeys = y})
+
+instance (HasColumns withKeys without) (GActor withKeys without) where
+    columnsL = lens (M.fromList . _actorColumns) (\x y -> x {_actorColumns = M.toList y})
 
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
 
-pActor :: Parser Actor
-pActor = pEntity "actor"
+pEntity :: Parser Entity
+pEntity = pKeyword "actor" *> (EActor <$> pActor) <|> pKeyword "resource" *> (EResource <$> pResource)
 
 pResource :: Parser Resource
-pResource = pEntity "resource"
-
-pEntity :: Text -> Parser (GEntity entityClass (Text, ColumnType))
-pEntity keyword = do
-    pKeyword keyword
-    entityName <- pTitleCasedWord
-        <?> T.unpack keyword <> " name (should start with upper case letter)"
+pResource = do
+    _resourceName <- pTitleCasedWord
+        <?> "resource name (should start with upper case letter)"
     symbol "{"
-    symbol "table" <?> "table (which table stores "<>T.unpack entityName<>"s?)"
-    entityKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
-    entityTable <- pQuotedLiteral False <?> "table name"
-    entityColumns <- pColumnsList
+    symbol "table" <?> "table (which table stores "<>T.unpack _resourceName<>"s?)"
+    _resourceTable <- pQuotedLiteral False <?> "table name"
+    _resourceKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
+    _resourceColumns <- pColumnsList
     symbol "}"
-    return $ Entity {..}
+    return $ GResource {..}
 
-pColumnsList :: Parser [(Text, ColumnType)]
+pActor :: Parser Actor
+pActor = do
+    _actorName <- pTitleCasedWord
+        <?> "actor name (should start with upper case letter)"
+    symbol "{"
+    symbol "table" <?> "table (which table stores "<>T.unpack _actorName<>"s?)"
+    _actorTable <- pQuotedLiteral False <?> "table name"
+    _actorKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
+    _actorColumns <- pColumnsList
+    symbol "}"
+    return $ GActor {..}
+
+pColumnsList :: Parser [(Text, BasicColumn)]
 pColumnsList = go <|> return []
     where
         go = do
@@ -95,7 +190,10 @@ pColumnsList = go <|> return []
             symbol ":"
             colType <- pTitleCasedWord
             foreignKeys <- optional $ symbol "(" *> pCommaSepList (pQuotedLiteral False) <* symbol ")"
-            return (colName, (colType, foreignKeys))
+            let theType = case foreignKeys of
+                    Nothing -> Right colType
+                    Just foreignKeys' -> Left (colType, foreignKeys')
+            return (colName, theType)
 
 pTitleCasedWord :: Parser Text
 pTitleCasedWord = lexeme $ do
@@ -130,40 +228,45 @@ pQuotedLiteral allowEmpty = lexeme $ do
     literal <- manyTill L.charLiteral (char '"')
     return $ T.pack (prefix <> literal)
 
-data Assoc = Assoc
-    { assocHeader :: AssocHeader
-    , assocDefinition :: Predicate Value
+data GAssoc headerType valueType = GAssoc
+    { _assocHeader :: GAssocHeader headerType
+    , _assocDefinition :: GPredicate valueType
     } deriving (Eq, Show, Ord)
+
+type Assoc = GAssoc Text ()
 
 pAssoc :: Parser Assoc
 pAssoc = lexeme $ do
-    assocHeader <- pAssocHeader
+    _assocHeader <- pAssocHeader
     symbol "if"
-    assocDefinition <- pPredicate
-    return Assoc {..}
+    _assocDefinition <- pPredicate
+    return GAssoc {..}
 
-data AssocHeader = AHPermission Permission | AHDef Definition
-    deriving (Eq, Show, Ord)
+type AssocHeader = GAssocHeader Text
+
+type GAssocHeader headerType = Either (GPermission headerType) (GDefinition headerType)
 
 pAssocHeader :: Parser AssocHeader
 pAssocHeader = lexeme $
-    (AHPermission <$> pPermission) <|> (AHDef <$> pDefinition)
+    (Left <$> pPermission) <|> (Right <$> pDefinition)
 
-data Permission = Permission
-    { permissionType :: PermissionType
-    , permissionActor :: TypedVar
-    , permissionResource :: TypedVar
+type Permission = GPermission Text
+
+data GPermission headerType = GPermission
+    { _permissionType :: PermissionType
+    , _permissionActor :: (Text, headerType)
+    , _permissionResource :: (Text, headerType)
     } deriving (Eq, Show, Ord)
 
 pPermission :: Parser Permission
 pPermission = lexeme $ do
-    permissionType <- pPermissionType
+    _permissionType <- pPermissionType
     symbol "("
-    permissionActor <- pTypedVar
+    _permissionActor <- pTypedVar
     symbol ","
-    permissionResource <- pTypedVar
+    _permissionResource <- pTypedVar
     symbol ")"
-    return Permission {..}
+    return GPermission {..}
 
 data PermissionType = PCanSelect | PCanInsert | PCanUpdate | PCanDelete
     deriving (Eq, Show, Ord)
@@ -176,42 +279,41 @@ pPermissionType = lexeme $ choice
     , PCanDelete <$ pKeyword "can_delete"
     ]
 
-data TypedVar = TypedVar
-    { typedVarName :: Text
-    , typedVarType :: Text
-    } deriving (Eq, Show, Ord)
-
-pTypedVar :: Parser TypedVar
+pTypedVar :: Parser (Text, Text)
 pTypedVar = lexeme $ do
-    typedVarName <- pLowerCasedWord
+    a <- pLowerCasedWord
     symbol ":"
-    typedVarType <- pTitleCasedWord <?> "type (an actor or resource)"
-    return TypedVar{..}
+    b <- pTitleCasedWord <?> "type (an actor or resource)"
+    return (a, b)
 
-data Definition = Definition
-    { defName :: Text
-    , defArgs :: [TypedVar]
+type Definition = GDefinition Text
+
+data GDefinition headerType = GDefinition
+    { _defName :: Text
+    , _defArgs :: [(Text, headerType)]
     } deriving (Eq, Show, Ord)
 
 pDefinition :: Parser Definition
 pDefinition = lexeme $ do
-    defName <- pLowerCasedWord
+    _defName <- pLowerCasedWord
     symbol "("
-    defArgs <- pCommaSepList pTypedVar
+    _defArgs <- pCommaSepList pTypedVar
     symbol ")"
-    return Definition {..}
+    return GDefinition {..}
 
-data Predicate a
-    = PredCall Text [a]
+data GPredicate valueType
+    = PredCall Text [GValue valueType]
     | PAlways
-    | PAnd (Predicate a) (Predicate a)
-    | POr (Predicate a) (Predicate a)
-    | PEquals a a
-    | PGreaterT a a
-    | PLessT a a
+    | PAnd (GPredicate valueType) (GPredicate valueType)
+    | POr (GPredicate valueType) (GPredicate valueType)
+    | PEquals (GValue valueType) (GValue valueType)
+    | PGreaterT (GValue valueType) (GValue valueType)
+    | PLessT (GValue valueType) (GValue valueType)
     deriving (Eq, Show, Ord)
 
-pPredicate :: Parser (Predicate Value)
+type Predicate = GPredicate ()
+
+pPredicate :: Parser Predicate
 pPredicate = makeExprParser pTerm operatorTable
     where
         pTerm = choice
@@ -228,7 +330,7 @@ pPredicate = makeExprParser pTerm operatorTable
             , InfixR (POr <$ symbol "||")
             ]]
 
-pPredCall :: Parser (Predicate Value)
+pPredCall :: Parser Predicate
 pPredCall = do
     name <- pLowerCasedWord
     symbol "("
@@ -236,30 +338,38 @@ pPredCall = do
     symbol ")"
     return $ PredCall name args
 
+type Value = GValue ()
 
-data Value
-    = VVar Text -- name of variable
-    | VVarField Value Text -- object variable and field
+data GValue valueType
+    = VVar
+        { _valName :: Text
+        , _valType :: valueType }
+    | VVarField
+        { _valObject :: GValue valueType
+        , _valField :: Text
+        , _valType :: valueType }
+    | VLiteral Literal
     -- literals
-    | VLitInt Int
-    | VLitBool Bool
-    | VLitString Text
     deriving (Eq, Ord)
 
-instance Show Value where
-    show (VVar t) = T.unpack t
-    show (VVarField v f) = show v ++ "." ++ T.unpack f
-    show (VLitBool b) = show b
-    show (VLitInt i) = show i
-    show (VLitString s) = show s
+instance Show (GValue valueType) where
+    show (VVar t _) = T.unpack t
+    show (VVarField v f _) = show v ++ "." ++ T.unpack f
+    show (VLiteral l) = show l
+
+data Literal
+    = LitInt Int
+    | LitBool Bool
+    | LitString Text
+    deriving (Eq, Ord, Show)
 
 pValue :: Parser Value
 pValue = lexeme $ choice
-    [ VLitInt <$> L.signed empty L.decimal
-    , VLitString <$> pQuotedLiteral True
-    , VLitBool True <$ string "true"
-    , VLitBool False <$ string "false"
-    , VVar <$> pLowerCasedWord
+    [ VLiteral . LitInt <$> L.signed empty L.decimal
+    , VLiteral . LitString <$> pQuotedLiteral True
+    , VLiteral (LitBool True) <$ string "true"
+    , VLiteral (LitBool False) <$ string "false"
+    , flip VVar () <$> pLowerCasedWord
     ] >>= pValueField
 
 pValueField :: Value -> Parser Value
@@ -269,8 +379,13 @@ pValueField val = do
         pLowerCasedWord
     case field of
         Nothing -> return val
-        Just fieldName -> pValueField $ VVarField val fieldName
+        Just fieldName -> pValueField $ VVarField val fieldName ()
 
 
 -- esperado: (VVF (VVF (VV abc) def) ghi)
 -- abc.def.ghi
+
+makeLenses ''AST
+makeLenses ''GAssoc
+makeLenses ''GEntity
+makeLenses ''GValue
