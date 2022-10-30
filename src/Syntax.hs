@@ -48,133 +48,51 @@ pAST = do
     _astAssociations <- some (lexeme pAssoc)
     return AST{..}
 
-data GEntity withKeys without = EActor (GActor withKeys without) | EResource (GResource withKeys without)
-    deriving (Eq, Ord, Show)
+data EntityClass = EActor | EResource
+    deriving (Eq, Show, Ord)
+
+data GEntity withKeys without = GEntity
+    { _entityName :: Text
+    , _entityTable :: Text
+    , _entityKeys :: [Text]
+    , _entityColumns :: Map Text (ColumnType withKeys without)
+    , _entityClass :: EntityClass
+    } deriving (Eq, Show, Ord)
 
 type Entity = GEntity Text Text
 
 -- run a function for columns with keys and another one for columns without
--- ignoring column name
 columnsMap :: ([Text] -> a -> b) -> (c -> d) -> GEntity a c -> GEntity b d
-columnsMap f g = entMap
+columnsMap f g ent = ent {_entityColumns = fmap go (_entityColumns ent)}
     where
-        entMap (EActor a) = EActor a {_actorColumns = map go (_actorColumns a)}
-        entMap (EResource r) = EResource r {_resourceColumns = map go (_resourceColumns r)}
-        go (colName, colType) =
+        go colType =
             let colType' = case colType of
-                    Left (ent, keys) -> Left (f keys ent, keys)
+                    Left (foreignEnt, keys) -> Left (f keys foreignEnt, keys)
                     Right primitive -> Right (g primitive)
-             in (colName, colType')
+             in colType'
 
 
 type ColumnType withKeys without = Either (withKeys, [Text]) without
 
 type BasicColumn = ColumnType Text Text
 
-class HasName ent where
-    nameL :: Lens' ent Text
-
-class HasTable ent where
-    tableL :: Lens' ent Text
-
-class HasPrimaryKeys ent where
-    primaryKeysL :: Lens' ent [Text]
-
-class HasColumns withKeys without ent where
-    columnsL :: Lens' ent (Map Text (ColumnType withKeys without))
-
-data GResource withKeys without = GResource
-    { _resourceName :: Text
-    , _resourceTable :: Text
-    , _resourceKeys :: [Text]
-    , _resourceColumns :: [(Text, ColumnType withKeys without)]
-    } deriving (Eq, Show, Ord)
-
-type Resource = GResource Text Text
-
-instance HasName (GResource a b) where
-    nameL = lens _resourceName (\x y -> x {_resourceName = y})
-
-instance HasTable (GResource a b) where
-    tableL = lens _resourceTable (\x y -> x {_resourceTable = y})
-
-instance HasPrimaryKeys (GResource a b) where
-    primaryKeysL = lens _resourceKeys (\x y -> x {_resourceKeys = y})
-
-instance (HasColumns withKeys without) (GResource withKeys without) where
-    columnsL = lens (M.fromList . _resourceColumns) (\x y -> x {_resourceColumns = M.toList y})
-
-instance (HasColumns withKeys without) (GEntity withKeys without) where
-    columnsL = lens
-        (\case EActor a -> (a^.columnsL) ; EResource r -> (r^.columnsL))
-        (\e b -> case e of
-            EActor a -> EActor (a & columnsL .~ b)
-            EResource r -> EResource (r & columnsL .~ b))
-
-instance HasName (GEntity withKeys without) where
-    nameL = lens
-        (\case EActor a -> (a^.nameL) ; EResource r -> (r^.nameL))
-        (\e b -> case e of
-            EActor a -> EActor (a & nameL .~ b)
-            EResource r -> EResource (r & nameL .~ b))
-
-instance HasPrimaryKeys (GEntity withKeys without) where
-    primaryKeysL = lens
-        (\case EActor a -> (a^.primaryKeysL) ; EResource r -> (r^.primaryKeysL))
-        (\e b -> case e of
-            EActor a -> EActor (a & primaryKeysL .~ b)
-            EResource r -> EResource (r & primaryKeysL .~ b))
-
-data GActor withKeys without = GActor
-    { _actorName :: Text
-    , _actorTable :: Text
-    , _actorKeys :: [Text]
-    , _actorColumns :: [(Text, ColumnType withKeys without)]
-    } deriving (Eq, Show, Ord)
-
-type Actor = GActor Text Text
-
-instance HasName (GActor a b) where
-    nameL = lens _actorName (\x y -> x {_actorName = y})
-
-instance HasTable (GActor a b) where
-    tableL = lens _actorTable (\x y -> x {_actorTable = y})
-
-instance HasPrimaryKeys (GActor a b) where
-    primaryKeysL = lens _actorKeys (\x y -> x {_actorKeys = y})
-
-instance (HasColumns withKeys without) (GActor withKeys without) where
-    columnsL = lens (M.fromList . _actorColumns) (\x y -> x {_actorColumns = M.toList y})
-
 stringLiteral :: Parser Text
 stringLiteral = char '"' >> T.pack <$> manyTill L.charLiteral (char '"')
 
 pEntity :: Parser Entity
-pEntity = pKeyword "actor" *> (EActor <$> pActor) <|> pKeyword "resource" *> (EResource <$> pResource)
-
-pResource :: Parser Resource
-pResource = do
-    _resourceName <- pTitleCasedWord
-        <?> "resource name (should start with upper case letter)"
-    symbol "{"
-    symbol "table" <?> "table (which table stores "<>T.unpack _resourceName<>"s?)"
-    _resourceTable <- pQuotedLiteral False <?> "table name"
-    _resourceKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
-    _resourceColumns <- pColumnsList
-    symbol "}"
-    return $ GResource {..}
-
-pActor :: Parser Actor
-pActor = do
-    _actorName <- pTitleCasedWord
+pEntity = do
+    _entityClass <- choice
+        [ EActor <$ pKeyword "actor"
+        , EResource <$ pKeyword "resource" ]
+    _entityName <- pTitleCasedWord
         <?> "actor name (should start with upper case letter)"
     symbol "{"
-    symbol "table" <?> "table (which table stores "<>T.unpack _actorName<>"s?)"
-    _actorTable <- pQuotedLiteral False <?> "table name"
-    _actorKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
-    _actorColumns <- pColumnsList
+    symbol "table" <?> "table (which table stores "<>T.unpack _entityName<>"s?)"
+    _entityTable <- pQuotedLiteral False <?> "table name"
+    _entityKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
+    _entityColumns <- M.fromList <$> pColumnsList
     symbol "}"
-    return $ GActor {..}
+    return $ GEntity {..}
 
 pColumnsList :: Parser [(Text, BasicColumn)]
 pColumnsList = go <|> return []

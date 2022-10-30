@@ -119,7 +119,7 @@ genEnt _ "Int" = return (TPrimitive TInt)
 genEnt _ "String" = return (TPrimitive TString)
 genEnt _ "Bool" = return (TPrimitive TBool)
 genEnt ast entName = TEntity . NonPrimitive <$> do
-    case ast ^? astEntities . each . filtered (\a -> a ^. nameL == entName) of
+    case ast ^? astEntities . each . filtered (\a -> a ^. entityName == entName) of
         Nothing -> typeFail $ entName <>" not found"
         Just ent -> do
             return $ columnsMap colWithKeys colWithout ent
@@ -131,18 +131,18 @@ genEnt ast entName = TEntity . NonPrimitive <$> do
         colWithKeys :: [Text] -> Text -> NonPrimitive
         colWithKeys keysList colType = case fromRight undefined $ genEnt ast colType of
             TPrimitive _ -> error "there should not be keys for a primitive"
-            TEntity e -> if length keysList == length (e ^. getNonPrimitive . primaryKeysL)
+            TEntity e -> if length keysList == length (e ^. getNonPrimitive . entityKeys)
                 then e
                 else error "wrong number of foreign keys"
 
 addEntity :: Entity -> TypeGen ()
 addEntity a = do
-    existingEntity <- use (piEntities . at (a ^. nameL))
+    existingEntity <- use (piEntities . at (a ^. entityName))
     case existingEntity of
         Just _ ->
-            lift . typeFail $ "entity "<>a ^. nameL<>" defined twice"
+            lift . typeFail $ "entity "<>a ^. entityName<>" defined twice"
         Nothing ->
-            piEntities . at (a ^. nameL) .= Just a
+            piEntities . at (a ^. entityName) .= Just a
 
 mkGlobals :: AST -> TypeGen ()
 mkGlobals ast = do
@@ -261,7 +261,7 @@ cValue (VVar varName ()) = do
         (Right . VVar varName) varType
 cValue (VVarField obj field ()) = do
     typedObj <- cValue obj
-    case typedObj ^? to typeOf . typeNonPrimitive . getNonPrimitive . columnsL . at field . _Just of
+    case typedObj ^? to typeOf . typeNonPrimitive . getNonPrimitive . entityColumns . at field . _Just of
         Nothing -> lift . typeFail $ tShow obj<>" has no field"<>field
         Just fieldColType -> do
             let fieldType = fieldColType
@@ -269,7 +269,7 @@ cValue (VVarField obj field ()) = do
             return $ VVarField typedObj field fieldType
 
 -- propertyLookup :: Text -> NonPrimitive -> Maybe ValidType
--- propertyLookup k np = np ^. columnsL . at k
+-- propertyLookup k np = np ^. entityColumns . at k
 
 addFunction :: Text -> [TypedVar] -> TypeGen ()
 addFunction name args = do
