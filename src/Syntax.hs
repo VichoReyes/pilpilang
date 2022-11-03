@@ -307,3 +307,5 @@ makeLenses ''AST
 makeLenses ''GAssoc
 makeLenses ''GEntity
 makeLenses ''GValue
+makeLenses ''GDefinition
+makeLenses ''GPermission

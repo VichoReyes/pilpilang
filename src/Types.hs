@@ -7,9 +7,9 @@ import Syntax
 import Data.Text (Text)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Control.Monad.State (StateT, MonadState (put, get), MonadTrans (lift), execStateT)
-import Control.Monad (forM_, forM, when)
-import Control.Monad.Reader (ReaderT (runReaderT), MonadReader (local, ask))
+import Control.Monad.State (StateT, MonadTrans (lift), execStateT)
+import Control.Monad (forM_, when, forM)
+import Control.Monad.Reader (ReaderT (runReaderT), MonadReader (ask, local))
 import qualified Data.Text as T
 import Data.String (IsString)
 import Lens.Micro.Platform
@@ -67,7 +67,7 @@ data PartialInfo = PartialInfo
 makeLenses ''PartialInfo
 
 data TypeInfo = TypeInfo
-    { _entities :: Map Type ValidType -- actor/resource name -> Entity
+    { _entities :: Map Type NonPrimitive -- actor/resource name -> Entity
     , _functions :: Map Text [ValidType] -- types of the arguments
     , _variables :: Map Text ValidType
     } deriving (Eq, Show)
@@ -106,30 +106,37 @@ materialize (PartialInfo ents funcs) ast = do
     let entNames = M.keys ents
     ents' <- mapM (genEnt ast) entNames
     let entPairs = zip entNames ents'
-    funcs' <- traverse (mapM $ lookupType entPairs) funcs
+    funcs' <- traverse (mapM $ lookupArgType entPairs) funcs
     return mempty <&> entities .~ M.fromList entPairs
                   <&> functions .~ funcs'
         where
-            lookupType entPairs typeName = case lookup typeName entPairs of
+            lookupArgType entPairs typeName = case lookup typeName entPairs of
                 Nothing -> Left . TypeError $ typeName<>" not found"
-                Just b -> Right b
+                Just b -> Right (TEntity b)
 
-genEnt :: AST -> Text -> Either TypeError ValidType
-genEnt _ "Int" = return (TPrimitive TInt)
-genEnt _ "String" = return (TPrimitive TString)
-genEnt _ "Bool" = return (TPrimitive TBool)
-genEnt ast entName = TEntity . NonPrimitive <$> do
+genEnt :: AST -> Text -> Either TypeError NonPrimitive
+genEnt ast entName = do
+    theType <- genType ast entName
+    case theType of
+        TPrimitive _ -> typeFail (entName <> " is a primitive but should not be")
+        TEntity np -> return np
+
+genType :: AST -> Text -> Either TypeError ValidType
+genType _ "Int" = return (TPrimitive TInt)
+genType _ "String" = return (TPrimitive TString)
+genType _ "Bool" = return (TPrimitive TBool)
+genType ast entName = TEntity . NonPrimitive <$> do
     case ast ^? astEntities . each . filtered (\a -> a ^. entityName == entName) of
         Nothing -> typeFail $ entName <>" not found"
         Just ent -> do
             return $ columnsMap colWithKeys colWithout ent
     where
         colWithout :: Text -> Primitive
-        colWithout colType = case fromRight undefined $ genEnt ast colType of
+        colWithout colType = case fromRight undefined $ genType ast colType of
             TPrimitive t -> t
             TEntity _ -> error "there should be keys"
         colWithKeys :: [Text] -> Text -> NonPrimitive
-        colWithKeys keysList colType = case fromRight undefined $ genEnt ast colType of
+        colWithKeys keysList colType = case fromRight undefined $ genType ast colType of
             TPrimitive _ -> error "there should not be keys for a primitive"
             TEntity e -> if length keysList == length (e ^. getNonPrimitive . entityKeys)
                 then e
@@ -162,52 +169,47 @@ cLookUp f err = do
         Nothing -> cTypeError err
         Just a -> return a
 
+-- 1. obtener variables, tipos del header
+-- 2. meterlos en la llamada local de cPredicate
+-- 3. Con el nombre y los tipos del header, hacer un AssocKey
+-- 4. retornar (assockey, nuevaAssoc)
 cAssocs :: [Assoc] -> TypeCheck TypedAST
-cAssocs = undefined
-{-
 cAssocs associations = M.fromList <$> do
     forM associations $ \assoc -> do
-        let predicate = assocDefinition assoc
-        (localVars, header) <- mkLocalVars (assocHeader assoc)
-        p <- local (\ti -> ti {variables = M.fromList localVars}) (cPredicate predicate)
-        return (header, (map fst localVars, p))
+        let predicate = assoc ^. assocDefinition
+        localVars <- mkLocalVars (assoc ^. assocHeader)
+        p <- local (\ti -> ti {_variables = M.fromList (localVars <&> _2 %~ TEntity)}) (cPredicate predicate)
+        let header = mkHeader localVars (assoc ^. assocHeader)
+        let key = mkKey header
+        return (key, assoc & assocDefinition .~ p & assocHeader .~ header)
 
-mkLocalVars :: AssocHeader -> TypeCheck ([(Text, ValidType)], TypedHeader)
-mkLocalVars (Left (GDefinition name vars)) = do
-    let types = map typedVarType vars
-    validTypes <- forM types getValType
-    let header = HDefinition name validTypes
-    let argNames = map typedVarName vars
-    return (zip argNames validTypes, header)
-mkLocalVars (Right (GPermission perm actorVar resourceVar)) = do
-    let (actorName, actorType) = var2pair actorVar
-    let (resourceName, resourceType) = var2pair resourceVar
-    when (actorName == resourceName) $
-        cTypeError ("actor "<>actorName<>" and resource "<>resourceName<>" can't have the same name")
-    actorType' <- cLookUp (M.lookup actorType . entities) ("Actor "<>actorType<>" not defined")
-    resourceType' <- cLookUp (M.lookup resourceType . entities) ("Resource "<>resourceType<>" not defined")
-    case (actorType', resourceType') of
-        (TActor actorEnt, TResource resourceEnt) ->
-            let scopeVariables = [(actorName, actorType'), (resourceName, resourceType')]
-                header = HPermission perm actorEnt resourceEnt
-             in return (scopeVariables, header)
-        (_ ,TResource _) -> cTypeError "when defining a permission, first argument should be an Actor"
-        (TActor _, _) -> cTypeError $ tShow resourceType'<>": when defining a permission, second argument should be a Resource"
-        (_, _) -> cTypeError "when defining a permission, first argument should be an Actor and second a Resource"
--}
+mkKey :: GAssocHeader NonPrimitive -> AssocKey
+mkKey (Right (GDefinition name vars)) = AssocKey {assocName=Right name, assocTypes=map (TEntity . snd) vars}
+mkKey (Left (GPermission perm act res)) = AssocKey {assocName=Left perm, assocTypes=map (TEntity . snd) [act, res]}
 
-{-
-TODO: Unify with genEnt, which does the same
-getValType :: Type -> TypeCheck ValidType
-getValType "Int" = return TInt
-getValType "String" = return TString
-getValType "Bool" = return TBool
-getValType typeName = do
-    typeInfo <- ask
-    case M.lookup typeName . entities $ typeInfo of
-      Nothing -> lift . Left . TypeError $ typeName<>" doesn't exist"
-      Just vt -> return vt
--}
+mkHeader :: [(Text, NonPrimitive)] -> AssocHeader -> GAssocHeader NonPrimitive
+mkHeader localVars (Right (GDefinition name _)) = Right $ GDefinition name localVars
+mkHeader [act, res] (Left (GPermission perm _ _)) = Left $ GPermission perm act res
+mkHeader _ _ = error "illegal state"
+
+mkLocalVars :: AssocHeader -> TypeCheck [(Text, NonPrimitive)]
+mkLocalVars (Right (GDefinition _ vars)) = do
+    types <- mapM (getEnt . snd) vars
+    return $ zip (map fst vars) types
+    -- return . Right $ GDefinition name (zip (map fst vars) types)
+mkLocalVars (Left (GPermission _ actorVar resourceVar)) = do
+    types <- mapM (getEnt . snd) [actorVar, resourceVar]
+    let (actorType, resourceType) = (head types, types!!1)
+    when (actorType ^. getNonPrimitive . entityClass /= EActor) $
+        lift . typeFail $ tShow actorType<>": when defining a permission, first argument should be an Actor"
+    when (resourceType ^. getNonPrimitive . entityClass /= EResource) $
+        lift . typeFail $ tShow resourceType<>": when defining a permission, second argument should be a Resource"
+    return [(fst actorVar, actorType), (fst resourceVar, resourceType)]
+
+getEnt :: Text -> TypeCheck NonPrimitive
+getEnt typeName = do
+    ent <- view (entities . at typeName)
+    lift $ maybe (typeFail "ent not found") Right ent
 
 type TypedVar = (Text, Text)
 
