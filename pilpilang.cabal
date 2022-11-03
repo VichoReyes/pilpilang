@@ -43,7 +43,7 @@ common deps
 
 library
     import:          deps
-    exposed-modules: Syntax, Types
+    exposed-modules: Syntax, Types, Common
     hs-source-dirs:  src
 
 executable pilpilang

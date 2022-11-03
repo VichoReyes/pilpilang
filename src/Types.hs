@@ -4,6 +4,11 @@
 module Types where
 
 import Syntax
+    ( astAssociations,
+      astEntities,
+      columnsMap
+    )
+import qualified Syntax
 import Data.Text (Text)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -14,6 +19,7 @@ import qualified Data.Text as T
 import Data.String (IsString)
 import Lens.Micro.Platform
 import Data.Either (fromRight)
+import Common
 
 tShow :: Show a => a -> Text
 tShow = T.pack . show
@@ -60,7 +66,7 @@ data AssocKey = AssocKey
     } deriving (Eq, Ord, Show)
 
 data PartialInfo = PartialInfo
-    { _piEntities :: Map Text Entity
+    { _piEntities :: Map Text Syntax.Entity
     , _piFunctions :: Map Text [Type] -- types of the arguments
     } deriving (Eq, Ord, Show)
 
@@ -95,13 +101,13 @@ typeFail = Left . TypeError
 
 type TypedAST = Map AssocKey (GAssoc NonPrimitive ValidType)
 
-runTypeChecker :: AST -> Either TypeError TypedAST
+runTypeChecker :: Syntax.AST -> Either TypeError TypedAST
 runTypeChecker ast = do
     partialGlobals <- execStateT (mkGlobals ast) mempty
     globals <- materialize partialGlobals ast
     runReaderT (cAssocs (ast ^. astAssociations)) globals
 
-materialize :: PartialInfo -> AST -> Either TypeError TypeInfo
+materialize :: PartialInfo -> Syntax.AST -> Either TypeError TypeInfo
 materialize (PartialInfo ents funcs) ast = do
     let entNames = M.keys ents
     ents' <- mapM (genEnt ast) entNames
@@ -114,14 +120,14 @@ materialize (PartialInfo ents funcs) ast = do
                 Nothing -> Left . TypeError $ typeName<>" not found"
                 Just b -> Right (TEntity b)
 
-genEnt :: AST -> Text -> Either TypeError NonPrimitive
+genEnt :: Syntax.AST -> Text -> Either TypeError NonPrimitive
 genEnt ast entName = do
     theType <- genType ast entName
     case theType of
         TPrimitive _ -> typeFail (entName <> " is a primitive but should not be")
         TEntity np -> return np
 
-genType :: AST -> Text -> Either TypeError ValidType
+genType :: Syntax.AST -> Text -> Either TypeError ValidType
 genType _ "Int" = return (TPrimitive TInt)
 genType _ "String" = return (TPrimitive TString)
 genType _ "Bool" = return (TPrimitive TBool)
@@ -142,7 +148,7 @@ genType ast entName = TEntity . NonPrimitive <$> do
                 then e
                 else error "wrong number of foreign keys"
 
-addEntity :: Entity -> TypeGen ()
+addEntity :: Syntax.Entity -> TypeGen ()
 addEntity a = do
     existingEntity <- use (piEntities . at (a ^. entityName))
     case existingEntity of
@@ -151,7 +157,7 @@ addEntity a = do
         Nothing ->
             piEntities . at (a ^. entityName) .= Just a
 
-mkGlobals :: AST -> TypeGen ()
+mkGlobals :: Syntax.AST -> TypeGen ()
 mkGlobals ast = do
     mapM_ addEntity (ast ^. astEntities)
     forM_ (ast ^. astAssociations) $ \assoc ->
@@ -173,7 +179,7 @@ cLookUp f err = do
 -- 2. meterlos en la llamada local de cPredicate
 -- 3. Con el nombre y los tipos del header, hacer un AssocKey
 -- 4. retornar (assockey, nuevaAssoc)
-cAssocs :: [Assoc] -> TypeCheck TypedAST
+cAssocs :: [Syntax.Assoc] -> TypeCheck TypedAST
 cAssocs associations = M.fromList <$> do
     forM associations $ \assoc -> do
         let predicate = assoc ^. assocDefinition
@@ -187,12 +193,12 @@ mkKey :: GAssocHeader NonPrimitive -> AssocKey
 mkKey (Right (GDefinition name vars)) = AssocKey {assocName=Right name, assocTypes=map (TEntity . snd) vars}
 mkKey (Left (GPermission perm act res)) = AssocKey {assocName=Left perm, assocTypes=map (TEntity . snd) [act, res]}
 
-mkHeader :: [(Text, NonPrimitive)] -> AssocHeader -> GAssocHeader NonPrimitive
+mkHeader :: [(Text, NonPrimitive)] -> Syntax.AssocHeader -> GAssocHeader NonPrimitive
 mkHeader localVars (Right (GDefinition name _)) = Right $ GDefinition name localVars
 mkHeader [act, res] (Left (GPermission perm _ _)) = Left $ GPermission perm act res
 mkHeader _ _ = error "illegal state"
 
-mkLocalVars :: AssocHeader -> TypeCheck [(Text, NonPrimitive)]
+mkLocalVars :: Syntax.AssocHeader -> TypeCheck [(Text, NonPrimitive)]
 mkLocalVars (Right (GDefinition _ vars)) = do
     types <- mapM (getEnt . snd) vars
     return $ zip (map fst vars) types
@@ -255,7 +261,7 @@ typeOf (VLiteral l) = TPrimitive $ literalType l
         literalType (LitInt _) = TInt
         literalType (LitString _) = TString
 
-cValue :: Value -> TypeCheck (GValue ValidType)
+cValue :: Syntax.Value -> TypeCheck (GValue ValidType)
 cValue (VLiteral l) = return $ VLiteral l
 cValue (VVar varName ()) = do
     varType <- view (variables . at varName)

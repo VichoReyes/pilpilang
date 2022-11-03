@@ -9,7 +9,7 @@
 
 module Syntax where
 
-import Lens.Micro.Platform
+import Lens.Micro.Platform ( makeLenses )
 import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Void (Void)
@@ -17,8 +17,8 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
-import Data.Map (Map)
 import qualified Data.Map as M
+import Common
 
 type Parser = Parsec Void Text
 
@@ -48,17 +48,6 @@ pAST = do
     _astAssociations <- some (lexeme pAssoc)
     return AST{..}
 
-data EntityClass = EActor | EResource
-    deriving (Eq, Show, Ord)
-
-data GEntity withKeys without = GEntity
-    { _entityName :: Text
-    , _entityTable :: Text
-    , _entityKeys :: [Text]
-    , _entityColumns :: Map Text (ColumnType withKeys without)
-    , _entityClass :: EntityClass
-    } deriving (Eq, Show, Ord)
-
 type Entity = GEntity Text Text
 
 -- run a function for columns with keys and another one for columns without
@@ -70,9 +59,6 @@ columnsMap f g ent = ent {_entityColumns = fmap go (_entityColumns ent)}
                     Left (foreignEnt, keys) -> Left (f keys foreignEnt, keys)
                     Right primitive -> Right (g primitive)
              in colType'
-
-
-type ColumnType withKeys without = Either (withKeys, [Text]) without
 
 type BasicColumn = ColumnType Text Text
 
@@ -146,11 +132,6 @@ pQuotedLiteral allowEmpty = lexeme $ do
     literal <- manyTill L.charLiteral (char '"')
     return $ T.pack (prefix <> literal)
 
-data GAssoc headerType valueType = GAssoc
-    { _assocHeader :: GAssocHeader headerType
-    , _assocDefinition :: GPredicate valueType
-    } deriving (Eq, Show, Ord)
-
 type Assoc = GAssoc Text ()
 
 pAssoc :: Parser Assoc
@@ -162,19 +143,11 @@ pAssoc = lexeme $ do
 
 type AssocHeader = GAssocHeader Text
 
-type GAssocHeader headerType = Either (GPermission headerType) (GDefinition headerType)
-
 pAssocHeader :: Parser AssocHeader
 pAssocHeader = lexeme $
     (Left <$> pPermission) <|> (Right <$> pDefinition)
 
 type Permission = GPermission Text
-
-data GPermission headerType = GPermission
-    { _permissionType :: PermissionType
-    , _permissionActor :: (Text, headerType)
-    , _permissionResource :: (Text, headerType)
-    } deriving (Eq, Show, Ord)
 
 pPermission :: Parser Permission
 pPermission = lexeme $ do
@@ -185,9 +158,6 @@ pPermission = lexeme $ do
     _permissionResource <- pTypedVar
     symbol ")"
     return GPermission {..}
-
-data PermissionType = PCanSelect | PCanInsert | PCanUpdate | PCanDelete
-    deriving (Eq, Show, Ord)
 
 pPermissionType :: Parser PermissionType
 pPermissionType = lexeme $ choice
@@ -206,11 +176,6 @@ pTypedVar = lexeme $ do
 
 type Definition = GDefinition Text
 
-data GDefinition headerType = GDefinition
-    { _defName :: Text
-    , _defArgs :: [(Text, headerType)]
-    } deriving (Eq, Show, Ord)
-
 pDefinition :: Parser Definition
 pDefinition = lexeme $ do
     _defName <- pLowerCasedWord
@@ -218,16 +183,6 @@ pDefinition = lexeme $ do
     _defArgs <- pCommaSepList pTypedVar
     symbol ")"
     return GDefinition {..}
-
-data GPredicate valueType
-    = PredCall Text [GValue valueType]
-    | PAlways
-    | PAnd (GPredicate valueType) (GPredicate valueType)
-    | POr (GPredicate valueType) (GPredicate valueType)
-    | PEquals (GValue valueType) (GValue valueType)
-    | PGreaterT (GValue valueType) (GValue valueType)
-    | PLessT (GValue valueType) (GValue valueType)
-    deriving (Eq, Show, Ord)
 
 type Predicate = GPredicate ()
 
@@ -258,29 +213,6 @@ pPredCall = do
 
 type Value = GValue ()
 
-data GValue valueType
-    = VVar
-        { _valName :: Text
-        , _valType :: valueType }
-    | VVarField
-        { _valObject :: GValue valueType
-        , _valField :: Text
-        , _valType :: valueType }
-    | VLiteral Literal
-    -- literals
-    deriving (Eq, Ord)
-
-instance Show (GValue valueType) where
-    show (VVar t _) = T.unpack t
-    show (VVarField v f _) = show v ++ "." ++ T.unpack f
-    show (VLiteral l) = show l
-
-data Literal
-    = LitInt Int
-    | LitBool Bool
-    | LitString Text
-    deriving (Eq, Ord, Show)
-
 pValue :: Parser Value
 pValue = lexeme $ choice
     [ VLiteral . LitInt <$> L.signed empty L.decimal
@@ -304,8 +236,3 @@ pValueField val = do
 -- abc.def.ghi
 
 makeLenses ''AST
-makeLenses ''GAssoc
-makeLenses ''GEntity
-makeLenses ''GValue
-makeLenses ''GDefinition
-makeLenses ''GPermission
