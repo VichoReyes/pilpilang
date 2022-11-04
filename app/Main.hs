@@ -8,9 +8,7 @@ import System.Environment (getArgs)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Types (runTypeChecker, TypeError (TypeError))
--- import Conversion (convert)
--- import Conversion
-convert = undefined
+import Conversion (convertAll)
 
 main :: IO ()
 main = do
@@ -27,6 +25,6 @@ main = do
             case runTypeChecker ast of
                 Right preds -> do
                     putStrLn "type checked correctly:"
-                    mapM_ print preds
+                    mapM_ print $ convertAll preds
                 Left (TypeError t) -> TIO.putStrLn t
         _ -> putStr "invalid"

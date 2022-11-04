@@ -30,6 +30,7 @@ common deps
         , parser-combinators
         , mtl
         , microlens-platform
+        , random
     ghc-options:   -Wall
                    -Wcompat
                    -Widentities
@@ -43,7 +44,7 @@ common deps
 
 library
     import:          deps
-    exposed-modules: Syntax, Types, Common
+    exposed-modules: Syntax, Types, Common, Conversion
     hs-source-dirs:  src
 
 executable pilpilang
