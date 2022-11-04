@@ -16,7 +16,7 @@ import System.Random
 import Types (TypedAST, ValidType (..), NonPrimitive, getNonPrimitive, tShow, typeOf, AssocKey (AssocKey))
 import Common
 import Lens.Micro.Platform
-import Data.Word (Word8)
+import Data.Word (Word8, Word32)
 
 {-
 
@@ -50,7 +50,7 @@ emptyState = ConversorState
     , _tableNicks = []
     , _joinConds = []
     , _randomGen = mkStdGen 1
-    , _renderFn = undefined -- ConversorState -> ConvertedPredicate -> Text
+    , _renderFn = error "called renderFn before defining it"
     }
 
 makeLenses ''ConversorState
@@ -71,7 +71,8 @@ mkInitialState :: GAssocHeader NonPrimitive -> ConversorState
 mkInitialState (Left perm) =
     emptyState
         & valueNicks .~ M.fromList headerVars
-        & renderFn .~ flip const
+        & tableNicks .~ [(perm^.permissionActor._2.getNonPrimitive.entityTable, "actorNick")]
+        & renderFn .~ permRender perm
     where
         headerVars =
             [
@@ -79,7 +80,7 @@ mkInitialState (Left perm) =
                 "actorNick")
             ,
                 (VVar (perm^.permissionResource._1) (perm^.permissionResource._2.to TEntity),
-                -- Can't use a nick for the table name
+                -- Can't use a nick for the resource name
                 perm^.permissionResource._2.getNonPrimitive.entityTable)
             ]
 
@@ -93,10 +94,31 @@ mkInitialState (Right def) = execState bootstrap emptyState
             let defRender s p = "SELECT "
                     <> T.intercalate ", " keysSelected
                     <> " FROM "
-                    <> T.intercalate ", " (s^..tableNicks.each.to (\(a, b) -> a<>" "<>b))
+                    <> renderTableNicks s
                     <> " WHERE "
                     <> T.intercalate " AND " (p : (s^.joinConds))
             assign renderFn defRender
+
+renderTableNicks :: ConversorState -> Text
+renderTableNicks state = T.intercalate ", " (state^..tableNicks.each.to (\(a, b) -> a<>" "<>b))
+
+permRender :: GPermission NonPrimitive -> ConversorState -> ConvertedPredicate -> Text
+permRender perm cs p = do
+    let policyId = fst $ random (cs^.randomGen) :: Word32
+    "CREATE POLICY policy"<>tShow policyId
+        <>" ON "<>perm^.permissionResource._2.getNonPrimitive.entityTable
+        <>" FOR "<>renderPermType (perm^.permissionType)
+        <>" WITH CHECK (current_user IN ("
+        <> "SELECT "<>T.intercalate "," (map ("actorNick."<>) (perm^.permissionActor._2.getNonPrimitive.entityKeys))
+        <>" FROM "<>renderTableNicks cs
+        <>" WHERE "<>T.intercalate " AND " (p : (cs^.joinConds))
+        <>"))"
+
+renderPermType :: PermissionType -> Text
+renderPermType PCanDelete = "DELETE"
+renderPermType PCanInsert = "INSERT"
+renderPermType PCanSelect = "SELECT"
+renderPermType PCanUpdate = "UPDATE"
 
 renderKeys :: Text -> NonPrimitive -> Text
 renderKeys nick np = T.intercalate ", " $ map (\pk -> nick<>"."<>pk) (np^.getNonPrimitive.entityKeys)
@@ -183,7 +205,7 @@ expandScope val@(VVarField obj f (TEntity np)) = do
     let newCond = "("<>valPKs<>") = ("<>objFKs<>")"
     modifying joinConds (++[newCond])
     return nick
-expandScope _ = undefined
+expandScope _ = error "expandScope with forbidden values"
 
 genNick' :: (RandomGen a) => a -> Text -> (TableNick, a)
 genNick' r prefix = let (postfix, r') = random r

@@ -25,6 +25,6 @@ main = do
             case runTypeChecker ast of
                 Right preds -> do
                     putStrLn "type checked correctly:"
-                    mapM_ print $ convertAll preds
+                    mapM_ TIO.putStrLn $ convertAll preds
                 Left (TypeError t) -> TIO.putStrLn t
         _ -> putStr "invalid"
