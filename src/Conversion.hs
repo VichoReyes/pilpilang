@@ -7,20 +7,16 @@ module Conversion where
 import Data.Maybe (fromJust)
 import Data.Text (Text)
 import Control.Monad.Reader (Reader, runReader, MonadReader (ask))
-import Control.Monad.RWS (asks)
 import qualified Data.Text as T
 import Data.Map (Map)
 import qualified Data.Map as M
-import qualified Data.List.NonEmpty as NE
-import Control.Monad.State (get, MonadState (put), StateT (runStateT), evalStateT, lift, evalState, execState)
-import Control.Monad (forM, forM_)
+import Control.Monad.State (MonadState, StateT (runStateT), execState)
+import Control.Monad (forM)
 import System.Random
-import Types (TypedAST, ValidType (..), Primitive, NonPrimitive, getNonPrimitive, tShow, typeOf, AssocKey (AssocKey))
+import Types (TypedAST, ValidType (..), NonPrimitive, getNonPrimitive, tShow, typeOf, AssocKey (AssocKey))
 import Common
 import Lens.Micro.Platform
-import Common (GValue(VVar))
-import Data.Int (Int8)
-import Control.Applicative ((<|>))
+import Data.Word (Word8)
 {-
 
 Primero se debe analizar el header para generar el estado inicial.
@@ -94,7 +90,7 @@ mkInitialState (Left perm) =
             [
                 (VVar (perm^.permissionActor._1) (perm^.permissionActor._2.to TEntity),
                 "actorNick")
-            , 
+            ,
                 (VVar (perm^.permissionResource._1) (perm^.permissionResource._2.to TEntity),
                 -- Can't use a nick for the table name
                 perm^.permissionResource._2.getNonPrimitive.entityTable)
@@ -107,8 +103,8 @@ mkInitialState (Right def) = execState bootstrap emptyState
                 let val = VVar var (TEntity np)
                 nick <- expandScope val
                 return $ T.intercalate ", " $ map (\pk -> nick<>"."<>pk) (np^.getNonPrimitive.entityKeys)
-            let defRender s p = "SELECT " 
-                    <> T.intercalate ", " keysSelected 
+            let defRender s p = "SELECT "
+                    <> T.intercalate ", " keysSelected
                     <> " FROM "
                     <> T.intercalate ", " (s^..tableNicks.each.to (\(a, b) -> a<>" "<>b))
                     <> " WHERE "
@@ -214,7 +210,7 @@ expandScope _ = undefined
 
 genNick' :: (RandomGen a) => a -> Text -> (TableNick, a)
 genNick' r prefix = let (postfix, r') = random r
-                        postfix :: Int8
+                        postfix :: Word8
                      in (prefix<>tShow postfix, r')
 
 genNick :: (MonadState ConversorState m) => Text -> m TableNick
