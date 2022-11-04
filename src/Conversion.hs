@@ -17,6 +17,7 @@ import Types (TypedAST, ValidType (..), NonPrimitive, getNonPrimitive, tShow, ty
 import Common
 import Lens.Micro.Platform
 import Data.Word (Word8)
+
 {-
 
 Primero se debe analizar el header para generar el estado inicial.
@@ -37,7 +38,7 @@ type ConvertedPredicate = Text
 
 data ConversorState = ConversorState
     { _valueNicks :: Map (GValue ValidType) TableNick
-    , _tableNicks :: [(Text, TableNick)] -- table, nickname
+    , _tableNicks :: [(Text, TableNick)]
     , _joinConds :: [Text]
     , _randomGen :: StdGen
     , _renderFn :: ConversorState -> ConvertedPredicate -> Text
@@ -55,20 +56,6 @@ emptyState = ConversorState
 makeLenses ''ConversorState
 
 type Conversor = StateT ConversorState (Reader TypedAST)
-
-{-
-data Query = Query
-    { qSelect :: [(Text, Text)] -- SELECT a.b, c.d 
-    , qFrom :: [(Text, (Char, Int))]     -- FROM arts a1, cuisines c1
-    , qWhere :: [Text]
-    } deriving (Show, Eq, Ord)
-
-qRender :: Query -> Text
-qRender Query {qSelect = select', qFrom = from', qWhere = where'}
-    = "SELECT "<>T.intercalate ", " (map (\(a, b) -> a<>"."<>b) select')
-    <> " FROM "<>T.intercalate ", " (map (\(a, (c, i)) -> a<>" "<>T.pack (c : show i)) from')
-    <> " WHERE "<>T.intercalate " AND " where'
--}
 
 convertAll :: TypedAST -> [Text]
 convertAll ast = map snd . M.toList . fmap (renderAssoc ast) $ ast
@@ -102,7 +89,7 @@ mkInitialState (Right def) = execState bootstrap emptyState
             keysSelected <- forM (def^.defArgs) $ \(var, np) -> do
                 let val = VVar var (TEntity np)
                 nick <- expandScope val
-                return $ T.intercalate ", " $ map (\pk -> nick<>"."<>pk) (np^.getNonPrimitive.entityKeys)
+                return $ renderKeys nick np
             let defRender s p = "SELECT "
                     <> T.intercalate ", " keysSelected
                     <> " FROM "
@@ -111,21 +98,8 @@ mkInitialState (Right def) = execState bootstrap emptyState
                     <> T.intercalate " AND " (p : (s^.joinConds))
             assign renderFn defRender
 
-{-
-renderAssoc2 header varNames predicate = do
-    select' <- mkScope header
-    (joinTables, conditions) <- removeIndirections predicate
-    predWhere <- renderPred predicate
-    return Query
-        { qFrom = joinTables ++ zip varNames select' -- TODO not varNames but table names
-        , qSelect = map (\(c, i) -> (T.pack $ c : show i, "some_pk")) select'
-        , qWhere = predWhere : conditions
-    }
-        where
-            mkScope (HDefinition _ types) = expandScope $ zipWith makeVal varNames types
-            mkScope (HPermission _ act res) = expandScope $ zipWith makeVal varNames [TActor act, TResource res]
-            makeVal name typ = ValidVal (VVar name) (NE.fromList [typ])
--}
+renderKeys :: Text -> NonPrimitive -> Text
+renderKeys nick np = T.intercalate ", " $ map (\pk -> nick<>"."<>pk) (np^.getNonPrimitive.entityKeys)
 
 renderPred :: GPredicate ValidType -> Conversor ConvertedPredicate
 renderPred predicate = do
@@ -133,16 +107,16 @@ renderPred predicate = do
         PAlways -> return "(1)"
         PAnd p1 p2 -> (\s1 s2 -> s1<>" AND "<>s2) <$> renderPred p1 <*> renderPred p2
         POr p1 p2 -> (\s1 s2 -> s1<>" OR "<>s2) <$> renderPred p1 <*> renderPred p2
-        PEquals v1 v2 -> renderCmp "=" v1 v2
-        PGreaterT v1 v2 -> renderCmp ">" v1 v2
-        PLessT v1 v2 -> renderCmp "<" v1 v2
+        PEquals v1 v2 -> renderCmp " = " v1 v2
+        PGreaterT v1 v2 -> renderCmp " > " v1 v2
+        PLessT v1 v2 -> renderCmp " < " v1 v2
         PredCall txt vvs -> do
             let key = AssocKey (Right txt) (map typeOf vvs)
             predDef <- fromJust <$> view (at key)
             ast <- ask
             let subquery = renderAssoc ast predDef
             renderedVals <- mapM renderVal vvs
-            return $ "("<>T.intercalate "," renderedVals<>") IN ("<>subquery<>")"
+            return $ "("<>T.intercalate ", " renderedVals<>") IN ("<>subquery<>")"
 
         where
             renderCmp cmp v1 v2 = do
@@ -153,37 +127,33 @@ renderPred predicate = do
 
 -- render a value. There are different cases:
 -- literal -> render as literal
--- variable -> look it up in scope, render
+-- variable -> look it up in scope, render. If it's not there, it's a programming failure.
 -- value.field -> opens up two more cases
 --    type of field is primitive -> "${render value}.field"
---    type of field is not primitive -> look it up in scope, render
--- non primitives should have been put in scope by previous phase
+--    type of field is not primitive -> either
+--        1. it's already in scope -> return it
+--        2. expand the scope, create a condition, return the new nickname
 renderVal :: GValue ValidType -> Conversor Text
 renderVal (VLiteral l) = return $ renderLit l
-renderVal val = do
+renderVal val@(VVar _ (TEntity np)) = do
+    nick <- renderValRec val
+    return $ renderKeys nick np
+renderVal val@(VVar _ (TPrimitive _)) = error $ "can't render "<>show val<>" yet, wait for an update"
+renderVal (VVarField obj f (TPrimitive _)) = do
+    t <- renderValRec obj
+    return $ t <> "."<> f
+renderVal val@(VVarField _ _ (TEntity np)) = do
+    nick <- renderValRec val
+    return $ renderKeys nick np
+
+renderValRec :: (MonadState ConversorState m) => GValue ValidType -> m Text
+renderValRec val@(VVar _ _) = fromJust <$> use (valueNicks . at val)
+renderValRec val@(VVarField _ _ (TEntity _)) = do
     n <- use (valueNicks . at val)
-    case (n, typeOf val) of
-        (Just nick, _) -> return nick
-        (Nothing, TEntity _) -> expandScope val
-        (Nothing, TPrimitive _) -> do
-            obj <- renderVal (val ^?! valObject)
-            return $ obj<>"."<>(val ^?! valField)
-
-{-
-renderVal val@ValidVal {vvContents = VVarField v f} = do
-    scope <- get
-    case lookup val scope of
-        Just x -> replace x
-        Nothing -> do
-            tableThing <- renderVal (ValidVal v (NE.fromList (NE.tail (vvType val))))
-            return $ tableThing <> "." <> f
-renderVal val = do
-    scope <- get
-    case lookup val scope of
-        Just x -> replace x
-        Nothing -> error $ "renderVal: scope = "<>show scope<>" and val = "<>show val
--}
-
+    case n of
+        Just nick -> return nick
+        Nothing -> expandScope val
+renderValRec _ = error "not implemented and illegal state"
 
 renderLit :: Literal -> Text
 renderLit (LitBool b) = tShow b
@@ -192,6 +162,7 @@ renderLit (LitInt i) = tShow i
 
 -- add value to the valueNicks, turning the value into a unique nickname combination
 -- this combination will also be added to tableNicks
+-- and a corresponding joinCond will be generated
 expandScope :: (MonadState ConversorState m) => GValue ValidType -> m TableNick
 expandScope val@(VVar _ (TEntity np)) = do
     let table = np ^. getNonPrimitive . entityTable
@@ -199,12 +170,18 @@ expandScope val@(VVar _ (TEntity np)) = do
     assign (valueNicks . at val) (Just nick)
     modifying tableNicks (++ [(table, nick)])
     return nick
-expandScope val@(VVarField _ _ (TEntity np)) = do
+expandScope val@(VVarField obj f (TEntity np)) = do
     let table = np ^. getNonPrimitive . entityTable
     nick <- genNick table
     assign (valueNicks . at val) (Just nick)
     modifying tableNicks (++ [(table, nick)])
-    -- TODO: add condition and key
+    let valPKs = renderKeys nick np
+    let TEntity parent = typeOf obj
+    let Just (Left (_, fKeys)) = parent^.getNonPrimitive.entityColumns.at f
+    renderedParent <- renderValRec obj
+    let objFKs = T.intercalate "," (((renderedParent<>".")<>) <$> fKeys)
+    let newCond = "("<>valPKs<>") = ("<>objFKs<>")"
+    modifying joinConds (++[newCond])
     return nick
 expandScope _ = undefined
 
