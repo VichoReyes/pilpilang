@@ -75,8 +75,9 @@ pEntity = do
     symbol "{"
     symbol "table" <?> "table (which table stores "<>T.unpack _entityName<>"s?)"
     _entityTable <- pQuotedLiteral False <?> "table name"
-    _entityKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
     _entityColumns <- M.fromList <$> pColumnsList
+    symbol "keys"
+    _entityKeys <- symbol "[" *> pCommaSepList (pQuotedLiteral False) <* symbol "]"
     symbol "}"
     return $ GEntity {..}
 

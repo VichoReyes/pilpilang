@@ -212,42 +212,6 @@ expandScope val@(VVarField _ _ (TEntity np)) = do
     return nick
 expandScope _ = undefined
 
-{-
-removeIndirections :: GPredicate ValidType -> Conversor ([(Text, (Char, Int))], [Text])
-removeIndirections predicate = unzip . concat <$> traverse extractInfo values
-    where
-        values :: [ValidVal]
-        values = getValues predicate
-        getValues PAlways = []
-        getValues (PredCall _ args) = args
-        getValues (PAnd p1 p2) = getValues p1 ++ getValues p2
-        getValues (POr p1 p2) = getValues p1 ++ getValues p2
-        getValues (PEquals v1 v2) = [v1, v2]
-        getValues (PGreaterT v1 v2) = [v1, v2]
-        getValues (PLessT v1 v2) = [v1, v2]
-
-        extractInfo :: ValidVal -> Conversor [((Text, (Char, Int)), Text)]
-        extractInfo v = case vvContents v of
-            VLitInt _ -> return []
-            VLitBool _ -> return []
-            VLitString _ -> return []
-            VVar _ -> return []
-            VVarField inner txt -> do
-                let innerVal = ValidVal inner (NE.fromList $ NE.tail $ vvType v)
-                innerResults <- extractInfo innerVal
-                if isPrimitive (NE.head (vvType v))
-                    then return innerResults
-                    else do
-                        tableNickname <- head <$> expandScope [v]
-                        let tableFullName = case NE.head (vvType v) of
-                                TActor ent -> entityTable ent
-                                TResource ent -> entityTable ent
-                                _ -> error "illegal state"
-                        let condition = "("<>txt<>" = some other key)"
-                        -- return both
-                        return $ ((tableFullName, tableNickname), condition) : innerResults
--}
-
 genNick' :: (RandomGen a) => a -> Text -> (TableNick, a)
 genNick' r prefix = let (postfix, r') = random r
                         postfix :: Int8
