@@ -11,7 +11,7 @@ import qualified Data.Text as T
 import Data.Map (Map)
 import qualified Data.Map as M
 import Control.Monad.State (MonadState, StateT (runStateT), execState)
-import Control.Monad (forM)
+import Control.Monad (forM, forM_)
 import System.Random
 import Types (TypedAST, ValidType (..), NonPrimitive, getNonPrimitive, tShow, typeOf, AssocKey (AssocKey))
 import Common
@@ -68,12 +68,16 @@ renderAssoc ast assoc =
 
 mkInitialState :: GAssocHeader NonPrimitive -> ConversorState
 
-mkInitialState (Left perm) =
-    emptyState
-        & valueNicks .~ M.fromList headerVars
-        & tableNicks .~ [(perm^.permissionActor._2.getNonPrimitive.entityTable, "actorNick")]
-        & renderFn .~ permRender perm
+mkInitialState (Left perm) = execState bootstrap emptyState
     where
+        bootstrap = do
+            assign valueNicks (M.fromList headerVars)
+            assign tableNicks [(perm^.permissionActor._2.getNonPrimitive.entityTable, "actorNick")]
+            forM_ (perm^.permissionExtraArgs) $ \(var, np) -> do
+                let val = VVar var (TEntity np)
+                expandScope val
+            assign renderFn (permRender perm)
+
         headerVars =
             [
                 (VVar (perm^.permissionActor._1) (perm^.permissionActor._2.to TEntity),
@@ -87,6 +91,9 @@ mkInitialState (Left perm) =
 mkInitialState (Right def) = execState bootstrap emptyState
     where
         bootstrap = do
+            forM_ (def^.defExtraArgs) $ \(var, np) -> do
+                let val = VVar var (TEntity np)
+                expandScope val
             keysSelected <- forM (def^.defArgs) $ \(var, np) -> do
                 let val = VVar var (TEntity np)
                 nick <- expandScope val
@@ -112,7 +119,7 @@ permRender perm cs p = do
         <> "SELECT "<>T.intercalate "," (map ("actorNick."<>) (perm^.permissionActor._2.getNonPrimitive.entityKeys))
         <>" FROM "<>renderTableNicks cs
         <>" WHERE "<>T.intercalate " AND " (p : (cs^.joinConds))
-        <>"))"
+        <>"));"
 
 renderPermType :: PermissionType -> Text
 renderPermType PCanDelete = "DELETE"

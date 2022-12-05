@@ -162,7 +162,7 @@ mkGlobals ast = do
     mapM_ addEntity (ast ^. astEntities)
     forM_ (ast ^. astAssociations) $ \assoc ->
         case assoc ^. assocHeader of
-            Right (GDefinition name args) -> addFunction name args
+            Right def@GDefinition {} -> addFunction (def^.defName) (def^.defArgs)
             _ -> return () -- skip permissions, they always have the same types
 
 cTypeError :: Text -> TypeCheck a
@@ -190,27 +190,31 @@ cAssocs associations = M.fromList <$> do
         return (key, assoc & assocDefinition .~ p & assocHeader .~ header)
 
 mkKey :: GAssocHeader NonPrimitive -> AssocKey
-mkKey (Right (GDefinition name vars)) = AssocKey {assocName=Right name, assocTypes=map (TEntity . snd) vars}
-mkKey (Left (GPermission perm act res)) = AssocKey {assocName=Left perm, assocTypes=map (TEntity . snd) [act, res]}
+mkKey (Right (GDefinition name vars _)) = AssocKey {assocName=Right name, assocTypes=map (TEntity . snd) vars}
+mkKey (Left (GPermission perm act res _)) = AssocKey {assocName=Left perm, assocTypes=map (TEntity . snd) [act, res]}
 
 mkHeader :: [(Text, NonPrimitive)] -> Syntax.AssocHeader -> GAssocHeader NonPrimitive
-mkHeader localVars (Right (GDefinition name _)) = Right $ GDefinition name localVars
-mkHeader [act, res] (Left (GPermission perm _ _)) = Left $ GPermission perm act res
+mkHeader localVars (Right (GDefinition name args _)) = Right $ GDefinition name (take (length args) localVars) (drop (length args) localVars)
+mkHeader (act:res:extra) (Left (GPermission perm _ _ _)) = Left $ GPermission perm act res extra
 mkHeader _ _ = error "illegal state"
 
 mkLocalVars :: Syntax.AssocHeader -> TypeCheck [(Text, NonPrimitive)]
-mkLocalVars (Right (GDefinition _ vars)) = do
-    types <- mapM (getEnt . snd) vars
-    return $ zip (map fst vars) types
+mkLocalVars (Right (GDefinition _ vars extraVars)) = do
+    let allVars = vars ++ extraVars
+    types <- mapM (getEnt . snd) allVars
+    return $ zip (map fst allVars) types
     -- return . Right $ GDefinition name (zip (map fst vars) types)
-mkLocalVars (Left (GPermission _ actorVar resourceVar)) = do
+mkLocalVars (Left (GPermission _ actorVar resourceVar extraVars)) = do
     types <- mapM (getEnt . snd) [actorVar, resourceVar]
     let (actorType, resourceType) = (head types, types!!1)
     when (actorType ^. getNonPrimitive . entityClass /= EActor) $
         lift . typeFail $ tShow actorType<>": when defining a permission, first argument should be an Actor"
     when (resourceType ^. getNonPrimitive . entityClass /= EResource) $
         lift . typeFail $ tShow resourceType<>": when defining a permission, second argument should be a Resource"
-    return [(fst actorVar, actorType), (fst resourceVar, resourceType)]
+    extraTypes <- mapM (getEnt . snd) extraVars
+    let retval = [(fst actorVar, actorType), (fst resourceVar, resourceType)]
+            ++ zip (map fst extraVars) extraTypes
+    return retval
 
 getEnt :: Text -> TypeCheck NonPrimitive
 getEnt typeName = do

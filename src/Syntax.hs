@@ -158,7 +158,15 @@ pPermission = lexeme $ do
     symbol ","
     _permissionResource <- pTypedVar
     symbol ")"
+    _permissionExtraArgs <- pExtraArgs
     return GPermission {..}
+
+pExtraArgs :: Parser [(Text, Text)]
+pExtraArgs = (<|> pure []) . lexeme $ do
+    symbol "["
+    extraArgs <- pCommaSepList pTypedVar
+    symbol "]"
+    return extraArgs
 
 pPermissionType :: Parser PermissionType
 pPermissionType = lexeme $ choice
@@ -183,6 +191,7 @@ pDefinition = lexeme $ do
     symbol "("
     _defArgs <- pCommaSepList pTypedVar
     symbol ")"
+    _defExtraArgs <- pExtraArgs
     return GDefinition {..}
 
 type Predicate = GPredicate ()

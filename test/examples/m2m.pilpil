@@ -1,0 +1,28 @@
+actor User {
+    table "users"
+    columns [
+        alcohol_ppm: Int,
+    ]
+    keys ["pk"]
+}
+
+resource Document {
+    table "documents"
+    columns [
+        contents: String,
+    ]
+    keys ["pk"]
+}
+
+resource Document_User {
+    table "doc_user"
+    columns [
+        user: User("user_fk"),
+        doc: Document("doc_fk"),
+        kind: String
+    ]
+    keys ["pk"]
+}
+
+can_update(u:User, doc:Document)[p: Document_User] if
+    p.user = u && p.doc = doc && p.kind = "collaborator"

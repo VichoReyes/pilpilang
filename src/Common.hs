@@ -30,6 +30,7 @@ data GPermission headerType = GPermission
     { _permissionType :: PermissionType
     , _permissionActor :: (Text, headerType)
     , _permissionResource :: (Text, headerType)
+    , _permissionExtraArgs :: [(Text, headerType)]
     } deriving (Eq, Show, Ord)
 
 data PermissionType = PCanSelect | PCanInsert | PCanUpdate | PCanDelete
@@ -38,6 +39,7 @@ data PermissionType = PCanSelect | PCanInsert | PCanUpdate | PCanDelete
 data GDefinition headerType = GDefinition
     { _defName :: Text
     , _defArgs :: [(Text, headerType)]
+    , _defExtraArgs :: [(Text, headerType)]
     } deriving (Eq, Show, Ord)
 
 data GPredicate valueType
