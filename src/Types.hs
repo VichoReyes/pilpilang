@@ -138,9 +138,10 @@ genType ast entName = TEntity . NonPrimitive <$> do
             return $ columnsMap colWithKeys colWithout ent
     where
         colWithout :: Text -> Primitive
-        colWithout colType = case fromRight undefined $ genType ast colType of
-            TPrimitive t -> t
-            TEntity _ -> error "there should be keys"
+        colWithout colType = case genType ast colType of
+            Right (TPrimitive t) -> t
+            Right (TEntity _) -> error "there should be keys"
+            Left err -> error (T.unpack $ getTypeError err)
         colWithKeys :: [Text] -> Text -> NonPrimitive
         colWithKeys keysList colType = case fromRight undefined $ genType ast colType of
             TPrimitive _ -> error "there should not be keys for a primitive"
