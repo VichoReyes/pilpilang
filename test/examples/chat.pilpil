@@ -1,36 +1,47 @@
 actor User {
     table "users"
     columns [
-        id: Int,
-        alcohol_ppm: Int,
+        username: String
     ]
-    keys ["pk"]
+    keys ["id"]
 }
 
 resource Message {
     table "messages"
     columns [
-        id: Int,
-        chat: Chat("chat_id"),
+        chat: Chat("chat"),
         contents: String,
+        sender: User("sender")
     ]
-    keys ["pk"]
+    keys ["id"]
 }
 
 resource Chat {
-    table "chat"
+    table "chats"
     columns [
-        id: Int,
-        user1: User("user1_id"),
-        user2: User("user2_id"),
+        title: String
     ]
-    keys ["pk"]
+    keys ["id"]
+}
+
+resource UserChatBelonging {
+    table "user_chat_belonging"
+    columns [
+        user: User("the_user"),
+        chat: Chat("chat"),
+        is_admin: Bool
+    ]
+    keys ["id"]
 }
 
 can_insert(u:User, m:Message) if
-    is_not_drunk(u)
+    u = m.sender
     && chat_contains(m.chat, u)
 
-is_not_drunk(u: User) if u.alcohol_ppm < 5
+chat_contains(c: Chat, u: User)[b: UserChatBelonging] if c = b.chat && u = b.user
 
-chat_contains(c: Chat, u: User) if u = c.user1 || u = c.user2
+can_select(u: User, m: Message) if chat_contains(m.chat, u)
+
+can_select(u: User, c: Chat) if chat_contains(c, u)
+
+can_insert(u: User, b: UserChatBelonging) if b.is_admin = true
