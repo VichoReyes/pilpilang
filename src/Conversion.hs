@@ -115,17 +115,17 @@ permRender perm cs p = do
     "CREATE POLICY policy"<>tShow policyId
         <>" ON "<>perm^.permissionResource._2.getNonPrimitive.entityTable
         <>" FOR "<>renderPermType (perm^.permissionType)
-        <>" WITH CHECK (current_user IN ("
+        <>" (current_user IN ("
         <> "SELECT "<>T.intercalate "," (map ("actorNick."<>) (perm^.permissionActor._2.getNonPrimitive.entityKeys))
         <>" FROM "<>renderTableNicks cs
         <>" WHERE "<>T.intercalate " AND " (p : (cs^.joinConds))
         <>"));"
 
 renderPermType :: PermissionType -> Text
-renderPermType PCanDelete = "DELETE"
-renderPermType PCanInsert = "INSERT"
-renderPermType PCanSelect = "SELECT"
-renderPermType PCanUpdate = "UPDATE"
+renderPermType PCanDelete = "DELETE USING"
+renderPermType PCanInsert = "INSERT WITH CHECK"
+renderPermType PCanSelect = "SELECT USING"
+renderPermType PCanUpdate = "UPDATE USING"
 
 renderKeys :: Text -> NonPrimitive -> Text
 renderKeys nick np = T.intercalate ", " $ map (\pk -> nick<>"."<>pk) (np^.getNonPrimitive.entityKeys)
