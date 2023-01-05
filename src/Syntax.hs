@@ -174,6 +174,7 @@ pPermissionType = lexeme $ choice
     , PCanInsert <$ pKeyword "can_insert"
     , PCanUpdate <$ pKeyword "can_update"
     , PCanDelete <$ pKeyword "can_delete"
+    , PCanAnything <$ pKeyword "can_anything"
     ]
 
 pTypedVar :: Parser (Text, Text)

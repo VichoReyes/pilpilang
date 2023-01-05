@@ -126,6 +126,7 @@ renderPermType PCanDelete = "DELETE USING"
 renderPermType PCanInsert = "INSERT WITH CHECK"
 renderPermType PCanSelect = "SELECT USING"
 renderPermType PCanUpdate = "UPDATE USING"
+renderPermType PCanAnything = "ALL USING"
 
 renderKeys :: Text -> NonPrimitive -> Text
 renderKeys nick np = T.intercalate ", " $ map (\pk -> nick<>"."<>pk) (np^.getNonPrimitive.entityKeys)
