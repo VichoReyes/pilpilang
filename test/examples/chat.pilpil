@@ -1,16 +1,23 @@
 actor User {
     table "users"
     columns [
-        username: String
     ]
     keys ["id"]
+}
+
+resource UserChat {
+    table "user_chats"
+    columns [
+        chat: Chat("chat_id"),
+        user: User("user_id"),
+    ]
+    keys ["chat_id", "user_id"]
 }
 
 resource Message {
     table "messages"
     columns [
-        chat: Chat("chat"),
-        contents: String,
+        chat: Chat("chat_id"),
         sender: User("sender")
     ]
     keys ["id"]
@@ -19,17 +26,6 @@ resource Message {
 resource Chat {
     table "chats"
     columns [
-        title: String
-    ]
-    keys ["id"]
-}
-
-resource UserChatBelonging {
-    table "user_chat_belonging"
-    columns [
-        user: User("the_user"),
-        chat: Chat("chat"),
-        is_admin: Bool
     ]
     keys ["id"]
 }
@@ -38,10 +34,8 @@ can_insert(u:User, m:Message) if
     u = m.sender
     && chat_contains(m.chat, u)
 
-chat_contains(c: Chat, u: User)[b: UserChatBelonging] if c = b.chat && u = b.user
+chat_contains(c: Chat, u: User)[b: UserChat] if c = b.chat && u = b.user
 
 can_select(u: User, m: Message) if chat_contains(m.chat, u)
 
 can_select(u: User, c: Chat) if chat_contains(c, u)
-
-can_insert(u: User, b: UserChatBelonging) if b.is_admin = true

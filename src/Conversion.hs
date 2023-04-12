@@ -112,13 +112,21 @@ renderTableNicks state = T.intercalate ", " (state^..tableNicks.each.to (\(a, b)
 permRender :: GPermission NonPrimitive -> ConversorState -> ConvertedPredicate -> Text
 permRender perm cs p = do
     let policyId = fst $ random (cs^.randomGen) :: Word32
-    "CREATE POLICY policy"<>tShow policyId
-        <>" ON "<>perm^.permissionResource._2.getNonPrimitive.entityTable
-        <>" FOR "<>renderPermType (perm^.permissionType)
-        <>" (current_user IN ("
-        <> "SELECT "<>T.intercalate "," (map ("actorNick."<>) (perm^.permissionActor._2.getNonPrimitive.entityKeys))
+    "create function pilpil"<>tShow policyId
+        <>" (varchar(30), "<>perm^.permissionResource._2.getNonPrimitive.entityTable<>" "
+        <>perm^.permissionResource._2.getNonPrimitive.entityTable<>")"
+        <>" returns boolean as $$"
+        <>" select ($1 IN ("
+        <>" SELECT "<>T.intercalate "," (map ("actorNick."<>) (perm^.permissionActor._2.getNonPrimitive.entityKeys))
         <>" FROM "<>renderTableNicks cs
         <>" WHERE "<>T.intercalate " AND " (p : (cs^.joinConds))
+        <>"));"
+        <>"$$ language sql security definer;"
+        <>" CREATE POLICY policy"<>tShow policyId
+        <>" ON "<>perm^.permissionResource._2.getNonPrimitive.entityTable
+        <>" FOR "<>renderPermType (perm^.permissionType)
+        <>"(pilpil"<>tShow policyId<>"(current_user :: text, "
+        <>perm^.permissionResource._2.getNonPrimitive.entityTable
         <>"));"
 
 renderPermType :: PermissionType -> Text
