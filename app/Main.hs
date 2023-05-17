@@ -20,11 +20,11 @@ main = do
             parseTest (pAssoc <* eof) contents
         [path] -> do
             contents <- TIO.readFile path
-            parseTest (pAST <* eof) contents
+            -- parseTest (pAST <* eof) contents
             let Right ast = parse (pAST <* eof) "" contents
             case runTypeChecker ast of
                 Right preds -> do
-                    putStrLn "type checked correctly:"
+                    -- putStrLn "type checked correctly:"
                     mapM_ TIO.putStrLn $ convertAll preds
                 Left (TypeError t) -> TIO.putStrLn t
         _ -> putStr "invalid"

@@ -13,10 +13,11 @@ import qualified Data.Map as M
 import Control.Monad.State (MonadState, StateT (runStateT), execState)
 import Control.Monad (forM, forM_)
 import System.Random
-import Types (TypedAST, ValidType (..), NonPrimitive, getNonPrimitive, tShow, typeOf, AssocKey (AssocKey))
+import Types (TypedAST, ValidType (..), NonPrimitive, getNonPrimitive, tShow, typeOf, AssocKey (AssocKey, assocName))
 import Common
 import Lens.Micro.Platform
 import Data.Word (Word8, Word32)
+import Data.Either (isLeft)
 
 {-
 
@@ -58,7 +59,7 @@ makeLenses ''ConversorState
 type Conversor = StateT ConversorState (Reader TypedAST)
 
 convertAll :: TypedAST -> [Text]
-convertAll ast = map snd . M.toList . fmap (renderAssoc ast) $ ast
+convertAll ast = map snd . filter (isLeft . assocName . fst) . M.toList . fmap (renderAssoc ast) $ ast
 
 renderAssoc :: TypedAST -> GAssoc NonPrimitive ValidType -> Text
 renderAssoc ast assoc =
